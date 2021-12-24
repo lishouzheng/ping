@@ -54,7 +54,6 @@ package ping
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"math/rand"
 	"net"
@@ -83,7 +82,7 @@ var (
 
 func Default(logger Logger) Pinger {
 	p := New(logger)
-	go p.RecvRun()
+	p.RecvRun()
 	return p
 }
 
@@ -125,9 +124,9 @@ func New(logger Logger) *pingeserver {
 
 // pingeserver represents a packet sender/receiver.
 type pingeserver struct {
-	Task map[int]PingIP
-
-	conn packetConn
+	Task  map[int]PingIP
+	RWMtx sync.RWMutex
+	conn  packetConn
 
 	// Size of packet being sent
 	Size int
@@ -143,8 +142,7 @@ type pingeserver struct {
 	protocol string
 
 	logger Logger
-
-	TTL int
+	TTL    int
 }
 
 type packet struct {
@@ -184,7 +182,6 @@ func (p *pingeserver) RecvRun() {
 		p.logger.Errorf("RecvRun Err[%v]", err)
 	}
 	// defer conn.Close()
-
 	conn.SetTTL(p.TTL)
 	if err := conn.SetFlagTTL(); err != nil {
 		p.logger.Errorf("run Err[%v]", err)
@@ -192,7 +189,6 @@ func (p *pingeserver) RecvRun() {
 	}
 	// defer p.finish()
 	p.conn = conn
-
 	go p.recvICMP()
 }
 
@@ -226,9 +222,7 @@ func (p *pingeserver) recvICMP() {
 			n, ttl, _, err = p.conn.ReadFrom(bytes)
 			if err != nil {
 				p.logger.Errorf("Recv Err[%v]", err)
-				return
 			}
-			fmt.Println("recv", n, ttl, err)
 			go p.processPacket(&packet{bytes: bytes, nbytes: n, ttl: ttl})
 		}
 	}
@@ -262,7 +256,9 @@ func (p *pingeserver) processPacket(recv *packet) {
 	}
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
+		p.RWMtx.RLock()
 		task, ok := p.Task[pkt.ID]
+		p.RWMtx.RUnlock()
 		if !ok {
 			p.logger.Errorf("Task[%v] dont exist", pkt.ID)
 			return
@@ -273,7 +269,6 @@ func (p *pingeserver) processPacket(recv *packet) {
 					p.logger.Errorf("Task[%v] Panic[%v]", pkt.ID, r)
 				}
 			}()
-			fmt.Println(pkt.ID, pkt.Seq, string(pkt.Data))
 			task.RecvBackHook(RecvPakcet{
 				ID:         pkt.ID,
 				Seq:        pkt.Seq,
@@ -289,12 +284,14 @@ func (p *pingeserver) processPacket(recv *packet) {
 }
 
 func (p *pingeserver) Send(pp PingIP) {
+	p.RWMtx.Lock()
+	p.Task[pp.ID()] = pp
+	p.RWMtx.Unlock()
 	p.sendICMP(pp)
 }
 
 func (p *pingeserver) sendICMP(pp PingIP) {
 	msgBytes, dst := pp.SendPrexHook()
-	fmt.Println("send", string(msgBytes), dst)
 	// panic(fmt.Sprint("send: ", msgBytes, dst))
 	for {
 		if _, err := p.conn.WriteTo(msgBytes, dst); err != nil {
@@ -307,6 +304,7 @@ func (p *pingeserver) sendICMP(pp PingIP) {
 			return
 		}
 		pp.SendBackHook()
+		return
 	}
 }
 
@@ -397,6 +395,7 @@ type Statistics struct {
 }
 
 type PingIP interface {
+	ID() int
 	SendPrexHook() (b []byte, dst net.Addr)
 	SendBackHook()
 	RecvBackHook(RecvPakcet)
@@ -442,6 +441,7 @@ type pingIP struct {
 	logger   Logger
 	// awaitingSequences map[uuid.UUID]map[int]struct{}
 	recvCh chan struct{}
+	rstCh  chan *Statistics
 }
 
 func NewPingIP(addr string, count int, logger Logger) (*pingIP, error) {
@@ -475,6 +475,7 @@ func NewPingIP(addr string, count int, logger Logger) (*pingIP, error) {
 		// logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
 		logger: logger,
 		recvCh: make(chan struct{}, count),
+		rstCh:  make(chan *Statistics, 1),
 	}, nil
 }
 
@@ -493,10 +494,32 @@ func NewPingIP(addr string, count int, logger Logger) (*pingIP, error) {
 // }
 
 func (p *pingIP) Start(pinger Pinger) {
-	for i := 0; i < p.Count; i++ {
-		pinger.Send(p)
-		time.Sleep(p.Interval)
-	}
+	go func() {
+		for i := 0; i < p.Count; i++ {
+			go pinger.Send(p)
+			time.Sleep(p.Interval)
+		}
+		t := time.NewTimer(p.Timeout)
+		var c int
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				p.rstCh <- p.Statistics()
+				return
+			case <-p.recvCh:
+				c++
+				if c >= p.Count {
+					p.rstCh <- p.Statistics()
+					return
+				}
+			}
+		}
+	}()
+}
+
+func (p *pingIP) ID() int {
+	return p.id
 }
 
 func (p *pingIP) ICMPRequestType() icmp.Type {
@@ -605,29 +628,7 @@ func (p *pingIP) RecvBackHook(r RecvPakcet) {
 }
 
 func (p *pingIP) Rst() *Statistics {
-	t := time.NewTimer(p.Timeout)
-	var c int
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			n := p.Count - len(p.rtts)
-			for i := 0; i < n; i++ {
-				p.updateStatistics(&Packet{
-					Addr: p.addr,
-					ID:   p.id,
-					Seq:  len(p.rtts) + 1,
-					Rtt:  0,
-				})
-				return p.Statistics()
-			}
-		case <-p.recvCh:
-			c++
-			if c >= p.Count {
-				return p.Statistics()
-			}
-		}
-	}
+	return <-p.rstCh
 }
 
 // func (p *pingIP) Reset() {
