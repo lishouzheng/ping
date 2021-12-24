@@ -7,7 +7,7 @@ import (
 func Example1() {
 	// Output:
 	pinger := Default(NoopLogger{})
-	var pp pingIP
+	var pp PingIPTask
 	pp.New("xx", 3, NoopLogger{})
 
 	pp.Start(pinger)
