@@ -207,117 +207,6 @@ func (p *Pinger) Stop() {
 	}
 }
 
-// func (p *Pinger) runLoop(
-// 	recvCh <-chan *packet,
-// ) error {
-// 	// if logger == nil {
-// 	// 	logger = NoopLogger{}
-// 	// }
-
-// 	// timeout := time.NewTicker(p.Timeout)
-// 	// interval := time.NewTicker(p.Interval)
-// 	defer func() {
-// 		p.Stop()
-// 		// interval.Stop()
-// 		// timeout.Stop()
-// 	}()
-
-// 	// if err := p.sendICMP(conn); err != nil {
-// 	// 	return err
-// 	// }
-
-// 	for {
-// 		select {
-// 		case <-p.done:
-// 			return nil
-
-// 		// case <-timeout.C:
-// 		// 	return nil
-
-// 		case r := <-recvCh:
-// 			p.processPacket(r)
-// 			// case <-interval.C:
-// 			// 	// if p.Count > 0 && p.PacketsSent >= p.Count {
-// 			// 	// 	interval.Stop()
-// 			// 	// 	continue
-// 			// 	// }
-// 			// 	err := p.sendICMP(conn)
-// 			// 	if err != nil {
-// 			// 		// FIXME: this logs as FATAL but continues
-// 			// 		logger.Fatalf("sending packet: %s", err)
-// 			// 	}
-// 		}
-// 		// if p.Count > 0 && p.PacketsRecv >= p.Count {
-// 		// 	return nil
-// 		// }
-// 	}
-// }
-
-// func (p *Pinger) Stop() {
-// 	p.lock.Lock()
-// 	defer p.lock.Unlock()
-
-// 	open := true
-// 	select {
-// 	case _, open = <-p.done:
-// 	default:
-// 	}
-
-// 	if open {
-// 		close(p.done)
-// 	}
-// }
-
-// func (p *Pinger) finish() {
-// 	// handler := p.OnFinish
-// 	// if handler != nil {
-// 	// 	s := p.Statistics()
-// 	// 	handler(s)
-// 	// }
-// }
-
-// Statistics returns the statistics of the pinger. This can be run while the
-// pinger is running or after it is finished. OnFinish calls this function to
-// get it's finished statistics.
-// func (p *Pinger) Statistics() *Statistics {
-// 	p.statsMu.RLock()
-// 	defer p.statsMu.RUnlock()
-// 	sent := p.PacketsSent
-// 	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
-// 	s := Statistics{
-// 		PacketsSent:           sent,
-// 		PacketsRecv:           p.PacketsRecv,
-// 		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
-// 		PacketLoss:            loss,
-// 		Rtts:                  p.rtts,
-// 		Addr:                  p.addr,
-// 		IPAddr:                p.ipaddr,
-// 		MaxRtt:                p.maxRtt,
-// 		MinRtt:                p.minRtt,
-// 		AvgRtt:                p.avgRtt,
-// 		StdDevRtt:             p.stdDevRtt,
-// 	}
-// 	return &s
-// }
-
-type expBackoff struct {
-	baseDelay time.Duration
-	maxExp    int64
-	c         int64
-}
-
-func (b *expBackoff) Get() time.Duration {
-	if b.c < b.maxExp {
-		b.c++
-	}
-
-	return b.baseDelay * time.Duration(rand.Int63n(1<<b.c))
-}
-
-func newExpBackoff(baseDelay time.Duration, maxExp int64) expBackoff {
-	return expBackoff{baseDelay: baseDelay, maxExp: maxExp}
-}
-
 func (p *Pinger) recvICMP() {
 	defer func() {
 		p.Stop()
@@ -327,7 +216,6 @@ func (p *Pinger) recvICMP() {
 		case <-p.done:
 			return
 		default:
-			p.conn.SetReadDeadline(time.Now().Add(10 * time.Hour))
 			bytes := make([]byte, p.getMessageLength())
 			var n, ttl int
 			var err error
