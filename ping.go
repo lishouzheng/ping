@@ -400,7 +400,7 @@ type PingIP interface {
 	RecvBackHook(RecvPakcet)
 }
 
-type pingIP struct {
+type PingIPTask struct {
 	id       int
 	sequence int
 	ipaddr   *net.IPAddr
@@ -447,7 +447,7 @@ var (
 	r = rand.New(rand.NewSource(getSeed()))
 )
 
-func (p *pingIP) New(addr string, count int, logger Logger) {
+func (p *PingIPTask) New(addr string, count int, logger Logger) {
 
 	// firstUUID := uuid.New()
 	// var firstSequence = map[uuid.UUID]map[int]struct{}{}
@@ -479,7 +479,7 @@ func (p *pingIP) New(addr string, count int, logger Logger) {
 	p.rtts = make([]time.Duration, 0, count)
 }
 
-func (p *pingIP) Reset() {
+func (p *PingIPTask) Reset() {
 	p.id = 0
 	p.sequence = 0
 	p.ipaddr = nil
@@ -522,7 +522,7 @@ func (p *pingIP) Reset() {
 	p.rstCh = nil
 }
 
-func (p *pingIP) Start(pinger Pinger) {
+func (p *PingIPTask) Start(pinger Pinger) {
 	go func() {
 		for i := 0; i < p.Count; i++ {
 			go pinger.Send(p)
@@ -547,15 +547,15 @@ func (p *pingIP) Start(pinger Pinger) {
 	}()
 }
 
-func (p *pingIP) ID() int {
+func (p *PingIPTask) ID() int {
 	return p.id
 }
 
-func (p *pingIP) ICMPRequestType() icmp.Type {
+func (p *PingIPTask) ICMPRequestType() icmp.Type {
 	return ipv4.ICMPTypeEcho
 }
 
-func (p *pingIP) SendPrexHook() ([]byte, net.Addr) {
+func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
 	var dst net.Addr = p.ipaddr
 	if p.protocol == "udp" {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
@@ -590,7 +590,7 @@ func (p *pingIP) SendPrexHook() ([]byte, net.Addr) {
 	return msgBytes, dst
 }
 
-func (p *pingIP) SendBackHook() {
+func (p *PingIPTask) SendBackHook() {
 	// handler := p.OnSend
 	// if handler != nil {
 	// 	outPkt := &Packet{
@@ -615,7 +615,7 @@ func (p *pingIP) SendBackHook() {
 	// break
 }
 
-func (p *pingIP) RecvBackHook(r RecvPakcet) {
+func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 
 	// if !p.matchID(pkt.ID) {
 	// 	return nil
@@ -644,7 +644,7 @@ func (p *pingIP) RecvBackHook(r RecvPakcet) {
 	p.recvCh <- struct{}{}
 }
 
-func (p *pingIP) Rst() *Statistics {
+func (p *PingIPTask) Rst() *Statistics {
 	return <-p.rstCh
 }
 
@@ -652,7 +652,7 @@ func (p *pingIP) Rst() *Statistics {
 
 // }
 
-func (p *pingIP) updateStatistics(pkt *Packet) {
+func (p *PingIPTask) updateStatistics(pkt *Packet) {
 	p.statsMu.Lock()
 	defer p.statsMu.Unlock()
 
@@ -678,7 +678,7 @@ func (p *pingIP) updateStatistics(pkt *Packet) {
 	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
 }
 
-func (p *pingIP) Statistics() *Statistics {
+func (p *PingIPTask) Statistics() *Statistics {
 	p.statsMu.RLock()
 	defer p.statsMu.RUnlock()
 	sent := p.PacketsSent

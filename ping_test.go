@@ -12,13 +12,7 @@ func Example1() {
 
 	pp.Start(pinger)
 	fmt.Println(pp.Rst())
-	pp.Reset()
-	pp.New("xx", 3, NoopLogger{})
-	pp.Start(pinger)
-	fmt.Println(pp.Rst())
-	pp.New("xx", 3, NoopLogger{})
-	pp.Start(pinger)
-	fmt.Println(pp.Rst())
+
 }
 
 // b, _ := json.Marshal(pp.Rst())
