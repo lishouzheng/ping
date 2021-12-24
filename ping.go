@@ -53,9 +53,7 @@
 package ping
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"log"
 	"math"
 	"math/rand"
@@ -126,58 +124,61 @@ type Pinger struct {
 	// packets have been received.
 	Timeout time.Duration
 
+	Task map[int]PingIP
+
+	conn packetConn
 	// Count tells pinger to stop after sending (and receiving) Count echo
 	// packets. If this option is not specified, pinger will operate until
 	// interrupted.
-	Count int
+	// Count int
 
 	// Debug runs in debug mode
-	Debug bool
+	// Debug bool
 
 	// Number of packets sent
-	PacketsSent int
+	// PacketsSent int
 
 	// Number of packets received
-	PacketsRecv int
+	// PacketsRecv int
 
 	// Number of duplicate packets received
-	PacketsRecvDuplicates int
+	// PacketsRecvDuplicates int
 
 	// Round trip time statistics
-	minRtt    time.Duration
-	maxRtt    time.Duration
-	avgRtt    time.Duration
-	stdDevRtt time.Duration
-	stddevm2  time.Duration
-	statsMu   sync.RWMutex
+	// minRtt    time.Duration
+	// maxRtt    time.Duration
+	// avgRtt    time.Duration
+	// stdDevRtt time.Duration
+	// stddevm2  time.Duration
+	// statsMu   sync.RWMutex
 
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
-	RecordRtts bool
+	// RecordRtts bool
 
 	// rtts is all of the Rtts
-	rtts []time.Duration
+	// rtts []time.Duration
 
 	// OnSetup is called when Pinger has finished setting up the listening socket
-	OnSetup func()
+	// OnSetup func()
 
 	// OnSend is called when Pinger sends a packet
-	OnSend func(*Packet)
+	// OnSend func(*Packet)
 
 	// OnRecv is called when Pinger receives and processes a packet
-	OnRecv func(*Packet)
+	// OnRecv func(*Packet)
 
 	// OnFinish is called when Pinger exits
-	OnFinish func(*Statistics)
+	// OnFinish func(*Statistics)
 
 	// OnDuplicateRecv is called when a packet is received that has already been received.
-	OnDuplicateRecv func(*Packet)
+	// OnDuplicateRecv func(*Packet)
 
 	// Size of packet being sent
 	Size int
 
 	// Tracker: Used to uniquely identify packets - Deprecated
-	Tracker uint64
+	// Tracker uint64
 
 	// Source is the source IP address
 	Source string
@@ -190,7 +191,7 @@ type Pinger struct {
 	addr   string
 
 	// trackerUUIDs is the list of UUIDs being used for sending packets.
-	trackerUUIDs []uuid.UUID
+	// trackerUUIDs []uuid.UUID
 
 	ipv4     bool
 	id       int
@@ -239,69 +240,69 @@ type Packet struct {
 
 // Statistics represent the stats of a currently running or finished
 // pinger operation.
-type Statistics struct {
-	// PacketsRecv is the number of packets received.
-	PacketsRecv int
+// type Statistics struct {
+// 	// PacketsRecv is the number of packets received.
+// 	PacketsRecv int
 
-	// PacketsSent is the number of packets sent.
-	PacketsSent int
+// 	// PacketsSent is the number of packets sent.
+// 	PacketsSent int
 
-	// PacketsRecvDuplicates is the number of duplicate responses there were to a sent packet.
-	PacketsRecvDuplicates int
+// 	// PacketsRecvDuplicates is the number of duplicate responses there were to a sent packet.
+// 	PacketsRecvDuplicates int
 
-	// PacketLoss is the percentage of packets lost.
-	PacketLoss float64
+// 	// PacketLoss is the percentage of packets lost.
+// 	PacketLoss float64
 
-	// IPAddr is the address of the host being pinged.
-	IPAddr *net.IPAddr
+// 	// IPAddr is the address of the host being pinged.
+// 	IPAddr *net.IPAddr
 
-	// Addr is the string address of the host being pinged.
-	Addr string
+// 	// Addr is the string address of the host being pinged.
+// 	Addr string
 
-	// Rtts is all of the round-trip times sent via this pinger.
-	Rtts []time.Duration
+// 	// Rtts is all of the round-trip times sent via this pinger.
+// 	Rtts []time.Duration
 
-	// MinRtt is the minimum round-trip time sent via this pinger.
-	MinRtt time.Duration
+// 	// MinRtt is the minimum round-trip time sent via this pinger.
+// 	MinRtt time.Duration
 
-	// MaxRtt is the maximum round-trip time sent via this pinger.
-	MaxRtt time.Duration
+// 	// MaxRtt is the maximum round-trip time sent via this pinger.
+// 	MaxRtt time.Duration
 
-	// AvgRtt is the average round-trip time sent via this pinger.
-	AvgRtt time.Duration
+// 	// AvgRtt is the average round-trip time sent via this pinger.
+// 	AvgRtt time.Duration
 
-	// StdDevRtt is the standard deviation of the round-trip times sent via
-	// this pinger.
-	StdDevRtt time.Duration
-}
+// 	// StdDevRtt is the standard deviation of the round-trip times sent via
+// 	// this pinger.
+// 	StdDevRtt time.Duration
+// }
 
-func (p *Pinger) updateStatistics(pkt *Packet) {
-	p.statsMu.Lock()
-	defer p.statsMu.Unlock()
+// func (p *Pinger) updateStatistics(pkt *Packet) {
+// 	p.statsMu.Lock()
+// 	defer p.statsMu.Unlock()
 
-	p.PacketsRecv++
-	if p.RecordRtts {
-		p.rtts = append(p.rtts, pkt.Rtt)
-	}
+// 	p.PacketsRecv++
+// 	if p.RecordRtts {
+// 		p.rtts = append(p.rtts, pkt.Rtt)
+// 	}
 
-	if p.PacketsRecv == 1 || pkt.Rtt < p.minRtt {
-		p.minRtt = pkt.Rtt
-	}
+// 	if p.PacketsRecv == 1 || pkt.Rtt < p.minRtt {
+// 		p.minRtt = pkt.Rtt
+// 	}
 
-	if pkt.Rtt > p.maxRtt {
-		p.maxRtt = pkt.Rtt
-	}
+// 	if pkt.Rtt > p.maxRtt {
+// 		p.maxRtt = pkt.Rtt
+// 	}
 
-	pktCount := time.Duration(p.PacketsRecv)
-	// welford's online method for stddev
-	// https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
-	delta := pkt.Rtt - p.avgRtt
-	p.avgRtt += delta / pktCount
-	delta2 := pkt.Rtt - p.avgRtt
-	p.stddevm2 += delta * delta2
+// 	pktCount := time.Duration(p.PacketsRecv)
+// 	// welford's online method for stddev
+// 	// https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+// 	delta := pkt.Rtt - p.avgRtt
+// 	p.avgRtt += delta / pktCount
+// 	delta2 := pkt.Rtt - p.avgRtt
+// 	p.stddevm2 += delta * delta2
 
-	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
-}
+// 	p.stdDevRtt = time.Duration(math.Sqrt(float64(p.stddevm2 / pktCount)))
+// }
 
 // SetIPAddr sets the ip address of the target host.
 func (p *Pinger) SetIPAddr(ipaddr *net.IPAddr) {
@@ -404,9 +405,9 @@ func (p *Pinger) ID() int {
 func (p *Pinger) Run() error {
 	var conn packetConn
 	var err error
-	if p.Size < timeSliceLength+trackerLength {
-		return fmt.Errorf("size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
-	}
+	// if p.Size < timeSliceLength+trackerLength {
+	// 	return fmt.Errorf("size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
+	// }
 	if p.ipaddr == nil {
 		err = p.Resolve()
 	}
@@ -426,80 +427,68 @@ func (p *Pinger) run(conn packetConn) error {
 	if err := conn.SetFlagTTL(); err != nil {
 		return err
 	}
-	defer p.finish()
-
-	recv := make(chan *packet, 5)
+	// defer p.finish()
+	p.conn = conn
+	recv := make(chan *packet, 50)
 	defer close(recv)
 
-	if handler := p.OnSetup; handler != nil {
-		handler()
-	}
+	// if handler := p.OnSetup; handler != nil {
+	// 	handler()
+	// }
 
 	var g errgroup.Group
 
 	g.Go(func() error {
-		defer p.Stop()
-		return p.recvICMP(conn, recv)
-	})
-
-	g.Go(func() error {
-		defer p.Stop()
-		return p.runLoop(conn, recv)
+		p.recvICMP(recv)
+		return nil
 	})
 
 	return g.Wait()
 }
 
 func (p *Pinger) runLoop(
-	conn packetConn,
 	recvCh <-chan *packet,
 ) error {
-	logger := p.logger
-	if logger == nil {
-		logger = NoopLogger{}
-	}
+	// if logger == nil {
+	// 	logger = NoopLogger{}
+	// }
 
-	timeout := time.NewTicker(p.Timeout)
-	interval := time.NewTicker(p.Interval)
+	// timeout := time.NewTicker(p.Timeout)
+	// interval := time.NewTicker(p.Interval)
 	defer func() {
 		p.Stop()
-		interval.Stop()
-		timeout.Stop()
+		// interval.Stop()
+		// timeout.Stop()
 	}()
 
-	if err := p.sendICMP(conn); err != nil {
-		return err
-	}
+	// if err := p.sendICMP(conn); err != nil {
+	// 	return err
+	// }
 
 	for {
 		select {
 		case <-p.done:
 			return nil
 
-		case <-timeout.C:
-			return nil
+		// case <-timeout.C:
+		// 	return nil
 
 		case r := <-recvCh:
-			err := p.processPacket(r)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("processing received packet: %s", err)
-			}
-
-		case <-interval.C:
-			if p.Count > 0 && p.PacketsSent >= p.Count {
-				interval.Stop()
-				continue
-			}
-			err := p.sendICMP(conn)
-			if err != nil {
-				// FIXME: this logs as FATAL but continues
-				logger.Fatalf("sending packet: %s", err)
-			}
+			p.processPacket(r)
+			// case <-interval.C:
+			// 	// if p.Count > 0 && p.PacketsSent >= p.Count {
+			// 	// 	interval.Stop()
+			// 	// 	continue
+			// 	// }
+			// 	err := p.sendICMP(conn)
+			// 	if err != nil {
+			// 		// FIXME: this logs as FATAL but continues
+			// 		logger.Fatalf("sending packet: %s", err)
+			// 	}
 		}
-		if p.Count > 0 && p.PacketsRecv >= p.Count {
-			return nil
-		}
+		// if p.Count > 0 && p.PacketsRecv >= p.Count {
+		// 	return nil
+		// }
 	}
 }
 
@@ -518,37 +507,37 @@ func (p *Pinger) Stop() {
 	}
 }
 
-func (p *Pinger) finish() {
-	handler := p.OnFinish
-	if handler != nil {
-		s := p.Statistics()
-		handler(s)
-	}
-}
+// func (p *Pinger) finish() {
+// 	// handler := p.OnFinish
+// 	// if handler != nil {
+// 	// 	s := p.Statistics()
+// 	// 	handler(s)
+// 	// }
+// }
 
 // Statistics returns the statistics of the pinger. This can be run while the
 // pinger is running or after it is finished. OnFinish calls this function to
 // get it's finished statistics.
-func (p *Pinger) Statistics() *Statistics {
-	p.statsMu.RLock()
-	defer p.statsMu.RUnlock()
-	sent := p.PacketsSent
-	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
-	s := Statistics{
-		PacketsSent:           sent,
-		PacketsRecv:           p.PacketsRecv,
-		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
-		PacketLoss:            loss,
-		Rtts:                  p.rtts,
-		Addr:                  p.addr,
-		IPAddr:                p.ipaddr,
-		MaxRtt:                p.maxRtt,
-		MinRtt:                p.minRtt,
-		AvgRtt:                p.avgRtt,
-		StdDevRtt:             p.stdDevRtt,
-	}
-	return &s
-}
+// func (p *Pinger) Statistics() *Statistics {
+// 	p.statsMu.RLock()
+// 	defer p.statsMu.RUnlock()
+// 	sent := p.PacketsSent
+// 	loss := float64(sent-p.PacketsRecv) / float64(sent) * 100
+// 	s := Statistics{
+// 		PacketsSent:           sent,
+// 		PacketsRecv:           p.PacketsRecv,
+// 		PacketsRecvDuplicates: p.PacketsRecvDuplicates,
+// 		PacketLoss:            loss,
+// 		Rtts:                  p.rtts,
+// 		Addr:                  p.addr,
+// 		IPAddr:                p.ipaddr,
+// 		MaxRtt:                p.maxRtt,
+// 		MinRtt:                p.minRtt,
+// 		AvgRtt:                p.avgRtt,
+// 		StdDevRtt:             p.stdDevRtt,
+// 	}
+// 	return &s
+// }
 
 type expBackoff struct {
 	baseDelay time.Duration
@@ -569,67 +558,65 @@ func newExpBackoff(baseDelay time.Duration, maxExp int64) expBackoff {
 }
 
 func (p *Pinger) recvICMP(
-	conn packetConn,
 	recv chan<- *packet,
-) error {
+) {
 	// Start by waiting for 50 µs and increase to a possible maximum of ~ 100 ms.
-	expBackoff := newExpBackoff(50*time.Microsecond, 11)
-	delay := expBackoff.Get()
-
+	// expBackoff := newExpBackoff(50*time.Microsecond, 11)
+	// delay := expBackoff.Get()
+	defer func() {
+		p.Stop()
+		// interval.Stop()
+		// timeout.Stop()
+	}()
 	for {
 		select {
 		case <-p.done:
-			return nil
+			return
 		default:
 			bytes := make([]byte, p.getMessageLength())
-			if err := conn.SetReadDeadline(time.Now().Add(delay)); err != nil {
-				return err
-			}
+			// if err := conn.SetReadDeadline(time.Now().Add(delay)); err != nil {
+			// 	return err
+			// }
 			var n, ttl int
 			var err error
-			n, ttl, _, err = conn.ReadFrom(bytes)
+			n, ttl, _, err = p.conn.ReadFrom(bytes)
 			if err != nil {
-				if neterr, ok := err.(*net.OpError); ok {
-					if neterr.Timeout() {
-						// Read timeout
-						delay = expBackoff.Get()
-						continue
-					}
-				}
-				return err
+				p.logger.Errorf("Recv Err[%v]", err)
 			}
-
-			select {
-			case <-p.done:
-				return nil
-			case recv <- &packet{bytes: bytes, nbytes: n, ttl: ttl}:
-			}
+			p.processPacket(&packet{bytes: bytes, nbytes: n, ttl: ttl})
 		}
 	}
 }
 
 // getPacketUUID scans the tracking slice for matches.
-func (p *Pinger) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
-	var packetUUID uuid.UUID
-	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
-	if err != nil {
-		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
-	}
+// func (p *Pinger) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
+// 	var packetUUID uuid.UUID
+// 	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
+// 	if err != nil {
+// 		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
+// 	}
 
-	for _, item := range p.trackerUUIDs {
-		if item == packetUUID {
-			return &packetUUID, nil
-		}
-	}
-	return nil, nil
-}
+// 	for _, item := range p.trackerUUIDs {
+// 		if item == packetUUID {
+// 			return &packetUUID, nil
+// 		}
+// 	}
+// 	return nil, nil
+// }
 
 // getCurrentTrackerUUID grabs the latest tracker UUID.
-func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
-	return p.trackerUUIDs[len(p.trackerUUIDs)-1]
+// func (p *Pinger) getCurrentTrackerUUID() uuid.UUID {
+// 	return p.trackerUUIDs[len(p.trackerUUIDs)-1]
+// }
+
+type RecvPakcet struct {
+	ID         int
+	Seq        int
+	Data       []byte
+	ReceivedAt time.Time
 }
 
-func (p *Pinger) processPacket(recv *packet) error {
+func (p *Pinger) processPacket(recv *packet) {
 	receivedAt := time.Now()
 	var proto int
 	if p.ipv4 {
@@ -641,100 +628,130 @@ func (p *Pinger) processPacket(recv *packet) error {
 	var m *icmp.Message
 	var err error
 	if m, err = icmp.ParseMessage(proto, recv.bytes); err != nil {
-		return fmt.Errorf("error parsing icmp message: %w", err)
+		p.logger.Errorf("error parsing icmp message: %w", err)
+		return
 	}
 
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
 		// Not an echo reply, ignore it
-		return nil
+		return
 	}
 
-	inPkt := &Packet{
-		Nbytes: recv.nbytes,
-		IPAddr: p.ipaddr,
-		Addr:   p.addr,
-		Ttl:    recv.ttl,
-		ID:     p.id,
-	}
+	// inPkt := &Packet{
+	// 	Nbytes: recv.nbytes,
+	// 	IPAddr: p.ipaddr,
+	// 	Addr:   p.addr,
+	// 	Ttl:    recv.ttl,
+	// 	ID:     p.id,
+	// }
 
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		if !p.matchID(pkt.ID) {
-			return nil
+		task, ok := p.Task[pkt.ID]
+		if !ok {
+			p.logger.Errorf("Task[%v] dont exist", pkt.ID)
+			return
 		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					p.logger.Errorf("Task[%v] Panic[%v]", pkt.ID, r)
+				}
+			}()
+			task.RecvBackHook(RecvPakcet{
+				ID:         pkt.ID,
+				Seq:        pkt.Seq,
+				Data:       pkt.Data,
+				ReceivedAt: receivedAt,
+			})
+		}()
 
-		if len(pkt.Data) < timeSliceLength+trackerLength {
-			return fmt.Errorf("insufficient data received; got: %d %v",
-				len(pkt.Data), pkt.Data)
-		}
+		// if !p.matchID(pkt.ID) {
+		// 	return nil
+		// }
 
-		pktUUID, err := p.getPacketUUID(pkt.Data)
-		if err != nil || pktUUID == nil {
-			return err
-		}
+		// if len(pkt.Data) < timeSliceLength+trackerLength {
+		// 	return fmt.Errorf("insufficient data received; got: %d %v",
+		// 		len(pkt.Data), pkt.Data)
+		// }
 
-		timestamp := bytesToTime(pkt.Data[:timeSliceLength])
-		inPkt.Rtt = receivedAt.Sub(timestamp)
-		inPkt.Seq = pkt.Seq
-		// If we've already received this sequence, ignore it.
-		if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
-			p.PacketsRecvDuplicates++
-			if p.OnDuplicateRecv != nil {
-				p.OnDuplicateRecv(inPkt)
-			}
-			return nil
-		}
-		// remove it from the list of sequences we're waiting for so we don't get duplicates.
-		delete(p.awaitingSequences[*pktUUID], pkt.Seq)
-		p.updateStatistics(inPkt)
+		// pktUUID, err := p.getPacketUUID(pkt.Data)
+		// if err != nil || pktUUID == nil {
+		// 	return err
+		// }
+
+		// timestamp := bytesToTime(pkt.Data[:timeSliceLength])
+		// inPkt.Rtt = receivedAt.Sub(timestamp)
+		// inPkt.Seq = pkt.Seq
+		// // If we've already received this sequence, ignore it.
+		// if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
+		// 	p.PacketsRecvDuplicates++
+		// 	if p.OnDuplicateRecv != nil {
+		// 		p.OnDuplicateRecv(inPkt)
+		// 	}
+		// 	return nil
+		// }
+		// // remove it from the list of sequences we're waiting for so we don't get duplicates.
+		// delete(p.awaitingSequences[*pktUUID], pkt.Seq)
+		// p.updateStatistics(inPkt)
 	default:
 		// Very bad, not sure how this can happen
-		return fmt.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
+		p.logger.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
 	}
 
-	handler := p.OnRecv
-	if handler != nil {
-		handler(inPkt)
-	}
+	// handler := p.OnRecv
+	// if handler != nil {
+	// 	handler(inPkt)
+	// }
 
-	return nil
+	return
 }
 
-func (p *Pinger) sendICMP(conn packetConn) error {
-	var dst net.Addr = p.ipaddr
-	if p.protocol == "udp" {
-		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
-	}
+type PingIP interface {
+	SendPrexHook() (b []byte, dst net.Addr)
+	SendBackHook()
+	RecvBackHook(RecvPakcet)
+}
 
-	currentUUID := p.getCurrentTrackerUUID()
-	uuidEncoded, err := currentUUID.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("unable to marshal UUID binary: %w", err)
-	}
-	t := append(timeToBytes(time.Now()), uuidEncoded...)
-	if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
-		t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
-	}
+func (p *Pinger) PingIP(pp PingIP) {
 
-	body := &icmp.Echo{
-		ID:   p.id,
-		Seq:  p.sequence,
-		Data: t,
-	}
+}
 
-	msg := &icmp.Message{
-		Type: conn.ICMPRequestType(),
-		Code: 0,
-		Body: body,
-	}
+func (p *Pinger) sendICMP(pp PingIP) error {
+	// var dst net.Addr = p.ipaddr
+	// if p.protocol == "udp" {
+	// 	dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
+	// }
+	// currentUUID := p.getCurrentTrackerUUID()
+	// uuidEncoded, err := currentUUID.MarshalBinary()
+	// if err != nil {
+	// 	return fmt.Errorf("unable to marshal UUID binary: %w", err)
+	// }
+	// t := append(timeToBytes(time.Now()), uuidEncoded...)
+	// if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
+	// 	t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
+	// }
 
-	msgBytes, err := msg.Marshal(nil)
-	if err != nil {
-		return err
-	}
+	// body := &icmp.Echo{
+	// 	ID:   p.id,
+	// 	Seq:  p.sequence,
+	// 	Data: t,
+	// }
+
+	// msg := &icmp.Message{
+	// 	Type: conn.ICMPRequestType(),
+	// 	Code: 0,
+	// 	Body: body,
+	// }
+
+	// msgBytes, err := msg.Marshal(nil)
+	// if err != nil {
+	// 	return err
+	// }
 
 	for {
-		if _, err := conn.WriteTo(msgBytes, dst); err != nil {
+		msgBytes, dst := pp.SendPrexHook()
+		if _, err := p.conn.WriteTo(msgBytes, dst); err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
 				if neterr.Err == syscall.ENOBUFS {
 					continue
@@ -742,28 +759,29 @@ func (p *Pinger) sendICMP(conn packetConn) error {
 			}
 			return err
 		}
-		handler := p.OnSend
-		if handler != nil {
-			outPkt := &Packet{
-				Nbytes: len(msgBytes),
-				IPAddr: p.ipaddr,
-				Addr:   p.addr,
-				Seq:    p.sequence,
-				ID:     p.id,
-			}
-			handler(outPkt)
-		}
-		// mark this sequence as in-flight
-		p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
-		p.PacketsSent++
-		p.sequence++
-		if p.sequence > 65535 {
-			newUUID := uuid.New()
-			p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
-			p.awaitingSequences[newUUID] = make(map[int]struct{})
-			p.sequence = 0
-		}
-		break
+		pp.SendBackHook()
+		// handler := p.OnSend
+		// if handler != nil {
+		// 	outPkt := &Packet{
+		// 		Nbytes: len(msgBytes),
+		// 		IPAddr: p.ipaddr,
+		// 		Addr:   p.addr,
+		// 		Seq:    p.sequence,
+		// 		ID:     p.id,
+		// 	}
+		// 	handler(outPkt)
+		// }
+		// // mark this sequence as in-flight
+		// p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
+		// p.PacketsSent++
+		// p.sequence++
+		// if p.sequence > 65535 {
+		// 	newUUID := uuid.New()
+		// 	p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
+		// 	p.awaitingSequences[newUUID] = make(map[int]struct{})
+		// 	p.sequence = 0
+		// }
+		// break
 	}
 
 	return nil
