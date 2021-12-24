@@ -265,7 +265,6 @@ func (p *pingeserver) processPacket(recv *packet) {
 		task, ok := p.Task[pkt.ID]
 		p.RWMtx.RUnlock()
 		if !ok {
-			p.logger.Errorf("Task[%v] dont exist", pkt.ID)
 			return
 		}
 		func() {
