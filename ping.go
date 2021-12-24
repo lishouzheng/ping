@@ -443,12 +443,8 @@ type PingIPTask struct {
 	rstCh  chan *Statistics
 }
 
-var (
-	r = rand.New(rand.NewSource(getSeed()))
-)
-
 func (p *PingIPTask) New(addr string, count int, logger Logger) {
-
+	r := rand.New(rand.NewSource(getSeed()))
 	// firstUUID := uuid.New()
 	// var firstSequence = map[uuid.UUID]map[int]struct{}{}
 	// firstSequence[firstUUID] = make(map[int]struct{})

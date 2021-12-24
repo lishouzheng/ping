@@ -8,7 +8,7 @@ func Example1() {
 	// Output:
 	pinger := Default(NoopLogger{})
 	var pp PingIPTask
-	pp.New("xx", 3, NoopLogger{})
+	pp.New("11.167.138.176", 3, NoopLogger{})
 
 	pp.Start(pinger)
 	fmt.Println(pp.Rst())
