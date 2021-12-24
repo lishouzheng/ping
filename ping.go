@@ -82,6 +82,7 @@ var (
 func Default(logger Logger) Pinger {
 	p := New(logger)
 	p.RecvRun()
+	go p.StartCheck()
 	return p
 }
 
@@ -112,7 +113,7 @@ func New(logger Logger) *pingeserver {
 		// awaitingSequences: firstSequence,
 		TTL:    64,
 		logger: logger,
-		Task:   make(map[int]PingIP, 0),
+		Task:   make(map[int]pingIPCache, 0),
 	}
 }
 
@@ -121,9 +122,14 @@ func New(logger Logger) *pingeserver {
 // 	return New(addr)
 // }
 
+type pingIPCache struct {
+	p PingIP
+	t time.Time
+}
+
 // pingeserver represents a packet sender/receiver.
 type pingeserver struct {
-	Task  map[int]PingIP
+	Task  map[int]pingIPCache
 	RWMtx sync.RWMutex
 	conn  packetConn
 
@@ -268,7 +274,7 @@ func (p *pingeserver) processPacket(recv *packet) {
 					p.logger.Errorf("Task[%v] Panic[%v]", pkt.ID, r)
 				}
 			}()
-			task.RecvBackHook(RecvPakcet{
+			task.p.RecvBackHook(RecvPakcet{
 				ID:         pkt.ID,
 				Seq:        pkt.Seq,
 				Data:       pkt.Data,
@@ -284,9 +290,45 @@ func (p *pingeserver) processPacket(recv *packet) {
 
 func (p *pingeserver) Send(pp PingIP) {
 	p.RWMtx.Lock()
-	p.Task[pp.ID()] = pp
+	p.Task[pp.ID()] = pingIPCache{
+		p: pp,
+		t: time.Now(),
+	}
 	p.RWMtx.Unlock()
 	p.sendICMP(pp)
+}
+
+var (
+	TaskTimeOut    = 20 * time.Second
+	TaskCheckRound = 1 * time.Minute
+)
+
+func (p *pingeserver) StartCheck() {
+	ticker := time.NewTicker(TaskCheckRound)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.done:
+			return
+		case <-ticker.C:
+			now := time.Now()
+			l := make([]int, 0, len(p.Task)/3)
+			p.RWMtx.RLock()
+			for k, n := range p.Task {
+				if now.Sub(n.t) > TaskTimeOut {
+					l = append(l, k)
+				}
+			}
+			p.RWMtx.RUnlock()
+			if len(l) != 0 {
+				p.RWMtx.Lock()
+				for _, n := range l {
+					delete(p.Task, n)
+				}
+				p.RWMtx.Unlock()
+			}
+		}
+	}
 }
 
 func (p *pingeserver) sendICMP(pp PingIP) {
