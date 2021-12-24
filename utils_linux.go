@@ -10,10 +10,10 @@ func (p *Pinger) getMessageLength() int {
 // Attempts to match the ID of an ICMP packet.
 func (p *Pinger) matchID(ID int) bool {
 	// On Linux we can only match ID if we are privileged.
-	if p.protocol == "icmp" {
-		if ID != p.id {
-			return false
-		}
-	}
+	// if p.protocol == "icmp" {
+	// 	if ID != p.id {
+	// 		return false
+	// 	}
+	// }
 	return true
 }

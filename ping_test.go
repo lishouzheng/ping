@@ -1,64 +1,18 @@
 package ping
 
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"os/signal"
-	"time"
-)
+import "time"
 
+// pinger := Default(NoopLogger{})
+// pp, err := NewPingIP("220.181.38.148", 3, NoopLogger{})
+// fmt.Println(err)
+// pp.Start(pinger)
+// b, _ := json.Marshal(pp.Rst())
+// fmt.Println(string(b))
 func Example1() {
 	// Output:
-	pinger, err := NewPinger("baidu.com")
-	if err != nil {
-		panic(err)
-	}
-	_ = "// Listen for Ctrl-C."
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for _ = range c {
-			pinger.Stop()
-		}
-	}()
+	Default(NoopLogger{})
+	time.Sleep(4 * time.Second)
 
-	pinger.OnRecv = func(pkt *Packet) {
-		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
-			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
-		b, _ := json.Marshal(pkt)
-		fmt.Println("OnRecv", time.Now(), string(b))
-	}
-
-	pinger.OnDuplicateRecv = func(pkt *Packet) {
-		fmt.Printf("%d bytes from %s: icmp_seq=%d time=%v ttl=%v (DUP!)\n",
-			pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt, pkt.Ttl)
-		b, _ := json.Marshal(pkt)
-		fmt.Println(time.Now(), string(b))
-	}
-
-	pinger.OnFinish = func(stats *Statistics) {
-		fmt.Printf("\n--- %s ping statistics ---\n", stats.Addr)
-		fmt.Printf("%d packets transmitted, %d packets received, %v%% packet loss\n",
-			stats.PacketsSent, stats.PacketsRecv, stats.PacketLoss)
-		fmt.Printf("round-trip min/avg/max/stddev = %v/%v/%v/%v\n",
-			stats.MinRtt, stats.AvgRtt, stats.MaxRtt, stats.StdDevRtt)
-		b, _ := json.Marshal(stats)
-		fmt.Println("OnFinish", time.Now(), string(b))
-	}
-
-	pinger.OnSend = func(pkt *Packet) {
-		b, _ := json.Marshal(pkt)
-		fmt.Println("OnSend", time.Now(), string(b))
-	}
-
-	fmt.Printf("PING %s (%s):\n", pinger.Addr(), pinger.IPAddr())
-	pinger.SetPrivileged(true)
-	pinger.Count = 3
-	err = pinger.Run()
-	if err != nil {
-		panic(err)
-	}
 }
 
 // func TestProcessPacket(t *testing.T) {

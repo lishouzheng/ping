@@ -1,6 +1,9 @@
 package ping
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 type Logger interface {
 	Fatalf(format string, v ...interface{})
@@ -38,16 +41,21 @@ type NoopLogger struct {
 }
 
 func (l NoopLogger) Fatalf(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
 }
 
 func (l NoopLogger) Errorf(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
 }
 
 func (l NoopLogger) Warnf(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
 }
 
 func (l NoopLogger) Infof(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
 }
 
 func (l NoopLogger) Debugf(format string, v ...interface{}) {
+	fmt.Printf(format, v...)
 }
