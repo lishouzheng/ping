@@ -34,6 +34,7 @@ func (c *icmpConn) SetTTL(ttl int) {
 }
 
 func (c *icmpConn) SetReadDeadline(t time.Time) error {
+
 	return c.c.SetReadDeadline(t)
 }
 

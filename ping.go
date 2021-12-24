@@ -81,19 +81,23 @@ var (
 	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 )
 
-func Default(logger Logger) *Pinger {
+func Default(logger Logger) Pinger {
 	p := New(logger)
 	go p.RecvRun()
 	return p
 }
 
+type Pinger interface {
+	Send(pp PingIP)
+}
+
 // New returns a new Pinger struct pointer.
-func New(logger Logger) *Pinger {
+func New(logger Logger) *pingeserver {
 	// r := rand.New(rand.NewSource(getSeed()))
 	firstUUID := uuid.New()
 	var firstSequence = map[uuid.UUID]map[int]struct{}{}
 	firstSequence[firstUUID] = make(map[int]struct{})
-	return &Pinger{
+	return &pingeserver{
 		// Count:      -1,
 		// Interval: time.Second,
 		// RecordRtts: true,
@@ -119,8 +123,8 @@ func New(logger Logger) *Pinger {
 // 	return New(addr)
 // }
 
-// Pinger represents a packet sender/receiver.
-type Pinger struct {
+// pingeserver represents a packet sender/receiver.
+type pingeserver struct {
 	Task map[int]PingIP
 
 	conn packetConn
@@ -167,7 +171,7 @@ type Packet struct {
 // RecvRun runs the pinger. This is a blocking function that will exit when it's
 // done. If Count or Interval are not specified, it will run continuously until
 // it is interrupted.
-func (p *Pinger) RecvRun() {
+func (p *pingeserver) RecvRun() {
 	var conn packetConn
 	var err error
 	if p.Size < timeSliceLength+trackerLength {
@@ -179,7 +183,7 @@ func (p *Pinger) RecvRun() {
 	if conn, err = p.listen(); err != nil {
 		p.logger.Errorf("RecvRun Err[%v]", err)
 	}
-	defer conn.Close()
+	// defer conn.Close()
 
 	conn.SetTTL(p.TTL)
 	if err := conn.SetFlagTTL(); err != nil {
@@ -192,7 +196,7 @@ func (p *Pinger) RecvRun() {
 	go p.recvICMP()
 }
 
-func (p *Pinger) Stop() {
+func (p *pingeserver) Stop() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -207,7 +211,7 @@ func (p *Pinger) Stop() {
 	}
 }
 
-func (p *Pinger) recvICMP() {
+func (p *pingeserver) recvICMP() {
 	defer func() {
 		p.Stop()
 	}()
@@ -225,7 +229,7 @@ func (p *Pinger) recvICMP() {
 				return
 			}
 			fmt.Println("recv", n, ttl, err)
-			p.processPacket(&packet{bytes: bytes, nbytes: n, ttl: ttl})
+			go p.processPacket(&packet{bytes: bytes, nbytes: n, ttl: ttl})
 		}
 	}
 }
@@ -237,7 +241,7 @@ type RecvPakcet struct {
 	ReceivedAt time.Time
 }
 
-func (p *Pinger) processPacket(recv *packet) {
+func (p *pingeserver) processPacket(recv *packet) {
 	receivedAt := time.Now()
 	var proto int
 	if p.ipv4 {
@@ -252,12 +256,10 @@ func (p *Pinger) processPacket(recv *packet) {
 		p.logger.Errorf("error parsing icmp message: %w", err)
 		return
 	}
-
 	if m.Type != ipv4.ICMPTypeEchoReply && m.Type != ipv6.ICMPTypeEchoReply {
 		// Not an echo reply, ignore it
 		return
 	}
-
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
 		task, ok := p.Task[pkt.ID]
@@ -271,6 +273,7 @@ func (p *Pinger) processPacket(recv *packet) {
 					p.logger.Errorf("Task[%v] Panic[%v]", pkt.ID, r)
 				}
 			}()
+			fmt.Println(pkt.ID, pkt.Seq, string(pkt.Data))
 			task.RecvBackHook(RecvPakcet{
 				ID:         pkt.ID,
 				Seq:        pkt.Seq,
@@ -282,17 +285,16 @@ func (p *Pinger) processPacket(recv *packet) {
 	default:
 		p.logger.Errorf("invalid ICMP echo reply; type: '%T', '%v'", pkt, pkt)
 	}
-
 	return
 }
 
-func (p *Pinger) Send(pp PingIP) {
+func (p *pingeserver) Send(pp PingIP) {
 	p.sendICMP(pp)
 }
 
-func (p *Pinger) sendICMP(pp PingIP) {
+func (p *pingeserver) sendICMP(pp PingIP) {
 	msgBytes, dst := pp.SendPrexHook()
-	fmt.Println("send", msgBytes, dst)
+	fmt.Println("send", string(msgBytes), dst)
 	// panic(fmt.Sprint("send: ", msgBytes, dst))
 	for {
 		if _, err := p.conn.WriteTo(msgBytes, dst); err != nil {
@@ -306,10 +308,9 @@ func (p *Pinger) sendICMP(pp PingIP) {
 		}
 		pp.SendBackHook()
 	}
-
 }
 
-func (p *Pinger) listen() (packetConn, error) {
+func (p *pingeserver) listen() (packetConn, error) {
 	var (
 		conn packetConn
 		err  error
@@ -317,7 +318,7 @@ func (p *Pinger) listen() (packetConn, error) {
 
 	if p.ipv4 {
 		var c icmpv4Conn
-		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], "0.0.0.0")
+		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
 		conn = &c
 	} else {
 		var c icmpV6Conn
@@ -491,7 +492,7 @@ func NewPingIP(addr string, count int, logger Logger) (*pingIP, error) {
 // 	return nil
 // }
 
-func (p *pingIP) Start(pinger *Pinger) {
+func (p *pingIP) Start(pinger Pinger) {
 	for i := 0; i < p.Count; i++ {
 		pinger.Send(p)
 		time.Sleep(p.Interval)

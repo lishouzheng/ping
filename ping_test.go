@@ -1,6 +1,10 @@
 package ping
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 // pinger := Default(NoopLogger{})
 // pp, err := NewPingIP("220.181.38.148", 3, NoopLogger{})
@@ -10,9 +14,14 @@ import "time"
 // fmt.Println(string(b))
 func Example1() {
 	// Output:
-	Default(NoopLogger{})
-	time.Sleep(4 * time.Second)
+	pinger := Default(NoopLogger{})
+	pp, err := NewPingIP("220.181.38.148", 3, NoopLogger{})
+	fmt.Println(err)
+	pp.Start(pinger)
+	b, _ := json.Marshal(pp.Rst())
+	fmt.Println(string(b))
 
+	time.Sleep(10 * time.Second)
 }
 
 // func TestProcessPacket(t *testing.T) {
