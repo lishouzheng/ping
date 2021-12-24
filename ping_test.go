@@ -4,25 +4,21 @@ import (
 	"fmt"
 )
 
-// pinger := Default(NoopLogger{})
-// pp, err := NewPingIP("220.181.38.148", 3, NoopLogger{})
-// fmt.Println(err)
-// pp.Start(pinger)
-// b, _ := json.Marshal(pp.Rst())
-// fmt.Println(string(b))
 func Example1() {
 	// Output:
 	pinger := Default(NoopLogger{})
-	pp, err := NewPingIP("220.181.38.148", 3, NoopLogger{})
-	pp2, err := NewPingIP("11.167.138.176", 3, NoopLogger{})
-	pp3, err := NewPingIP("9.134.75.207", 3, NoopLogger{})
-	fmt.Println(err)
+	var pp pingIP
+	pp.New("xx", 3, NoopLogger{})
+
 	pp.Start(pinger)
-	pp2.Start(pinger)
-	pp3.Start(pinger)
 	fmt.Println(pp.Rst())
-	fmt.Println(pp2.Rst())
-	fmt.Println(pp3.Rst())
+	pp.Reset()
+	pp.New("xx", 3, NoopLogger{})
+	pp.Start(pinger)
+	fmt.Println(pp.Rst())
+	pp.New("xx", 3, NoopLogger{})
+	pp.Start(pinger)
+	fmt.Println(pp.Rst())
 }
 
 // b, _ := json.Marshal(pp.Rst())

@@ -53,7 +53,6 @@
 package ping
 
 import (
-	"errors"
 	"math"
 	"math/rand"
 	"net"
@@ -444,54 +443,84 @@ type pingIP struct {
 	rstCh  chan *Statistics
 }
 
-func NewPingIP(addr string, count int, logger Logger) (*pingIP, error) {
-	r := rand.New(rand.NewSource(getSeed()))
+var (
+	r = rand.New(rand.NewSource(getSeed()))
+)
+
+func (p *pingIP) New(addr string, count int, logger Logger) {
+
 	// firstUUID := uuid.New()
 	// var firstSequence = map[uuid.UUID]map[int]struct{}{}
 	// firstSequence[firstUUID] = make(map[int]struct{})
 	if len(addr) == 0 {
-		return nil, errors.New("addr cannot be empty")
+		logger.Errorf("addr cannot be empty")
+		return
 	}
 	ipaddr, err := net.ResolveIPAddr("ip", addr)
 	if err != nil {
-		return nil, err
+		logger.Errorf(err.Error())
+		return
 	}
-	return &pingIP{
-		Count:      count,
-		Interval:   500 * time.Millisecond,
-		RecordRtts: true,
-		// Size:       timeSliceLength + trackerLength,
-		Timeout: 10 * time.Second,
-		addr:    addr,
-		// done:              make(chan interface{}),
-		id: r.Intn(math.MaxUint16),
-		// trackerUUIDs:      []uuid.UUID{firstUUID},
-		ipaddr: ipaddr,
-		// ipv4:              false,
-		network:  "ip",
-		protocol: "icmp",
-		// awaitingSequences: firstSequence,
-		// TTL:               64,
-		// logger:            StdLogger{Logger: log.New(log.Writer(), log.Prefix(), log.Flags())},
-		logger: logger,
-		recvCh: make(chan struct{}, count),
-		rstCh:  make(chan *Statistics, 1),
-	}, nil
+	p.Count = count
+	p.Interval = 500 * time.Millisecond
+	p.RecordRtts = true
+	p.Timeout = 10 * time.Second
+	p.addr = addr
+	// done:              make(chan interface{}),
+	p.id = r.Intn(math.MaxUint16)
+	// trackerUUIDs:      []uuid.UUID{firstUUID},
+	p.ipaddr = ipaddr
+	// ipv4:              false,
+	p.network = "ip"
+	p.protocol = "icmp"
+	p.logger = logger
+	p.recvCh = make(chan struct{}, count)
+	p.rstCh = make(chan *Statistics, 1)
+	p.rtts = make([]time.Duration, 0, count)
 }
 
-// func (p *pingIP) Resolve() error {
-// 	if len(p.addr) == 0 {
-// 		return errors.New("addr cannot be empty")
-// 	}
-// 	ipaddr, err := net.ResolveIPAddr(p.network, p.addr)
-// 	if err != nil {
-// 		return err
-// 	}
+func (p *pingIP) Reset() {
+	p.id = 0
+	p.sequence = 0
+	p.ipaddr = nil
+	// interrupted.
+	p.Count = 0
+	p.addr = ""
+	p.network = ""
+	// Debug runs in debug mode
+	// Debug bool
 
-// 	p.ipaddr = ipaddr
+	// Number of packets sent
+	p.PacketsSent = 0
 
-// 	return nil
-// }
+	// Number of packets received
+	p.PacketsRecv = 0
+
+	// Number of duplicate packets received
+	p.PacketsRecvDuplicates = 0
+
+	// Round trip time statistics
+	p.minRtt = 0
+	p.maxRtt = 0
+	p.avgRtt = 0
+	p.stdDevRtt = 0
+	p.stddevm2 = 0
+	// p.statsMu   =sync.RWMutex
+
+	// If true, keep a record of rtts of all received packets.
+	// Set to false to avoid memory bloat for long running pings.
+	p.RecordRtts = false
+
+	// rtts is all of the Rtts
+	p.rtts = nil
+	p.Interval = 0
+	p.Timeout = 0
+	p.protocol = ""
+	p.logger = nil
+	// awaitingSequences map[uuid.UUID]map[int]struct{}
+	p.recvCh = nil
+	p.rstCh = nil
+}
 
 func (p *pingIP) Start(pinger Pinger) {
 	go func() {
@@ -612,19 +641,7 @@ func (p *pingIP) RecvBackHook(r RecvPakcet) {
 		Seq: r.Seq,
 		Rtt: r.ReceivedAt.Sub(timestamp),
 	})
-	// inPkt.Rtt = receivedAt.Sub(timestamp)
-	// inPkt.Seq = pkt.Seq
-	// If we've already received this sequence, ignore it.
-	// if _, inflight := p.awaitingSequences[*pktUUID][pkt.Seq]; !inflight {
-	// 	p.PacketsRecvDuplicates++
-	// 	if p.OnDuplicateRecv != nil {
-	// 		p.OnDuplicateRecv(inPkt)
-	// 	}
-	// 	return nil
-	// }
-	// remove it from the list of sequences we're waiting for so we don't get duplicates.
-	// delete(p.awaitingSequences[*pktUUID], pkt.Seq)
-
+	p.recvCh <- struct{}{}
 }
 
 func (p *pingIP) Rst() *Statistics {
