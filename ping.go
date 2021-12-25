@@ -575,14 +575,14 @@ func (p *PingIPTask) Start(pinger Pinger) {
 		for {
 			select {
 			case <-t.C:
-				p.rstCh <- p.Statistics()
 				close(p.recvCh)
+				p.rstCh <- p.Statistics()
 				return
 			case <-p.recvCh:
 				c++
 				if c >= p.Count {
-					p.rstCh <- p.Statistics()
 					close(p.recvCh)
+					p.rstCh <- p.Statistics()
 					return
 				}
 			}
