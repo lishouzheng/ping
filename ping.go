@@ -536,6 +536,8 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	p.Size = timeSliceLength + trackerLength
 }
 
+// 共29个字段, 其中重置26个
+// rand不用重置, mtx和rwmtx不用重置
 func (p *PingIPTask) Reset() {
 	p.trackerUUID = uuid.Nil
 	p.awaitingSequences = nil
