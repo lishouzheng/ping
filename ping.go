@@ -495,7 +495,8 @@ type PingIPTask struct {
 	recvCh   chan struct{}
 	pinger   Pinger
 	Size     int
-
+	// 不用重置
+	mtx               sync.Mutex
 	trackerUUID       uuid.UUID
 	awaitingSequences map[int]struct{}
 }
@@ -663,7 +664,9 @@ func (p *PingIPTask) SendBackHook() {
 	p.sequence++
 	if p.sequence > 65535 {
 		p.trackerUUID = uuid.New()
+		p.mtx.Lock()
 		p.awaitingSequences = make(map[int]struct{})
+		p.mtx.Unlock()
 		p.sequence = 0
 	}
 }
@@ -682,10 +685,15 @@ func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 	if *pktUUID != p.trackerUUID {
 		return
 	}
-	if _, ok := p.awaitingSequences[r.Seq]; ok {
+	p.mtx.Lock()
+	_, ok := p.awaitingSequences[r.Seq]
+	p.mtx.Unlock()
+	if ok {
 		return
 	}
+	p.mtx.Lock()
 	p.awaitingSequences[r.Seq] = struct{}{}
+	p.mtx.Unlock()
 	timestamp := bytesToTime(r.Data[:timeSliceLength])
 	p.updateStatistics(&Packet{
 		// Nbytes: recv.nbytes,
