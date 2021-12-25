@@ -572,6 +572,9 @@ func (p *PingIPTask) Start(pinger Pinger) {
 		t := time.NewTimer(p.Timeout)
 		var c int
 		defer t.Stop()
+		defer func() {
+			close(p.recvCh)
+		}()
 		for {
 			select {
 			case <-t.C:
@@ -682,7 +685,13 @@ func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 		Seq: r.Seq,
 		Rtt: r.ReceivedAt.Sub(timestamp),
 	})
-	p.recvCh <- struct{}{}
+	func() {
+		defer func() {
+			recover()
+		}()
+		p.recvCh <- struct{}{}
+	}()
+
 }
 
 func (p *PingIPTask) Rst() *Statistics {
