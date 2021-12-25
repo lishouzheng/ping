@@ -82,12 +82,13 @@ var (
 func Default(logger Logger) Pinger {
 	p := New(logger)
 	p.RecvRun()
-	go p.StartCheck()
+	// go p.StartCheck()
 	return p
 }
 
 type Pinger interface {
 	Send(pp PingIP)
+	CloseTask(int)
 }
 
 // New returns a new Pinger struct pointer.
@@ -297,38 +298,44 @@ func (p *pingeserver) Send(pp PingIP) {
 	p.sendICMP(pp)
 }
 
-var (
-	TaskTimeOut    = 20 * time.Second
-	TaskCheckRound = 1 * time.Minute
-)
-
-func (p *pingeserver) StartCheck() {
-	ticker := time.NewTicker(TaskCheckRound)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-p.done:
-			return
-		case <-ticker.C:
-			now := time.Now()
-			l := make([]int, 0, len(p.Task)/3)
-			p.RWMtx.RLock()
-			for k, n := range p.Task {
-				if now.Sub(n.t) > TaskTimeOut {
-					l = append(l, k)
-				}
-			}
-			p.RWMtx.RUnlock()
-			if len(l) != 0 {
-				p.RWMtx.Lock()
-				for _, n := range l {
-					delete(p.Task, n)
-				}
-				p.RWMtx.Unlock()
-			}
-		}
-	}
+func (p *pingeserver) CloseTask(i int) {
+	p.RWMtx.Lock()
+	defer p.RWMtx.Unlock()
+	delete(p.Task, i)
 }
+
+// var (
+// 	TaskTimeOut    = 20 * time.Second
+// 	TaskCheckRound = 1 * time.Minute
+// )
+
+// func (p *pingeserver) StartCheck() {
+// 	ticker := time.NewTicker(TaskCheckRound)
+// 	defer ticker.Stop()
+// 	for {
+// 		select {
+// 		case <-p.done:
+// 			return
+// 		case <-ticker.C:
+// 			now := time.Now()
+// 			l := make([]int, 0, len(p.Task)/3)
+// 			p.RWMtx.RLock()
+// 			for k, n := range p.Task {
+// 				if now.Sub(n.t) > TaskTimeOut {
+// 					l = append(l, k)
+// 				}
+// 			}
+// 			p.RWMtx.RUnlock()
+// 			if len(l) != 0 {
+// 				p.RWMtx.Lock()
+// 				for _, n := range l {
+// 					delete(p.Task, n)
+// 				}
+// 				p.RWMtx.Unlock()
+// 			}
+// 		}
+// 	}
+// }
 
 func (p *pingeserver) sendICMP(pp PingIP) {
 	msgBytes, dst := pp.SendPrexHook()
@@ -481,11 +488,12 @@ type PingIPTask struct {
 	protocol string
 	logger   Logger
 	// awaitingSequences map[uuid.UUID]map[int]struct{}
-	recvCh chan struct{}
 	rstCh  chan *Statistics
+	recvCh chan struct{}
+	pinger Pinger
 }
 
-func (p *PingIPTask) New(addr string, count int, logger Logger) {
+func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	if p.r == nil {
 		p.r = rand.New(rand.NewSource(getSeed()))
 	}
@@ -515,9 +523,10 @@ func (p *PingIPTask) New(addr string, count int, logger Logger) {
 	p.network = "ip"
 	p.protocol = "icmp"
 	p.logger = logger
-	p.recvCh = make(chan struct{}, count)
 	p.rstCh = make(chan *Statistics, 1)
 	p.rtts = make([]time.Duration, 0, count)
+	p.recvCh = make(chan struct{}, count)
+	p.pinger = pinger
 }
 
 func (p *PingIPTask) Reset() {
@@ -559,32 +568,32 @@ func (p *PingIPTask) Reset() {
 	p.protocol = ""
 	p.logger = nil
 	// awaitingSequences map[uuid.UUID]map[int]struct{}
-	p.recvCh = nil
 	p.rstCh = nil
+	p.recvCh = nil
+	p.pinger = nil
 }
 
-func (p *PingIPTask) Start(pinger Pinger) {
+func (p *PingIPTask) Start() {
+
 	go func() {
 		for i := 0; i < p.Count; i++ {
-			go pinger.Send(p)
+			go p.pinger.Send(p)
 			time.Sleep(p.Interval)
 		}
 		t := time.NewTimer(p.Timeout)
-		var c int
 		defer t.Stop()
 		for {
 			select {
-			case <-t.C:
-				close(p.recvCh)
-				p.rstCh <- p.Statistics()
-				return
 			case <-p.recvCh:
-				c++
-				if c >= p.Count {
-					close(p.recvCh)
+				if p.PacketsRecv >= p.Count {
+					p.pinger.CloseTask(p.id)
 					p.rstCh <- p.Statistics()
 					return
 				}
+			case <-t.C:
+				p.pinger.CloseTask(p.id)
+				p.rstCh <- p.Statistics()
+				return
 			}
 		}
 	}()
@@ -658,6 +667,7 @@ func (p *PingIPTask) SendBackHook() {
 	// break
 }
 
+// RecvBackHook return true, close
 func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 
 	// if !p.matchID(pkt.ID) {
@@ -684,13 +694,7 @@ func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 		Seq: r.Seq,
 		Rtt: r.ReceivedAt.Sub(timestamp),
 	})
-	func() {
-		defer func() {
-			recover()
-		}()
-		p.recvCh <- struct{}{}
-	}()
-
+	p.recvCh <- struct{}{}
 }
 
 func (p *PingIPTask) Rst() *Statistics {
