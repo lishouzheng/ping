@@ -574,12 +574,13 @@ func (p *PingIPTask) Reset() {
 }
 
 func (p *PingIPTask) Start() {
-
 	go func() {
 		for i := 0; i < p.Count; i++ {
 			go p.pinger.Send(p)
 			time.Sleep(p.Interval)
 		}
+	}()
+	go func() {
 		t := time.NewTimer(p.Timeout)
 		defer t.Stop()
 		for {
