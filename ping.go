@@ -53,6 +53,7 @@
 package ping
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"net"
@@ -106,15 +107,15 @@ func New(logger Logger) *pingeserver {
 		// addr: addr,
 		done: make(chan interface{}),
 		// id:                r.Intn(math.MaxUint16),
-		// trackerUUIDs:      []uuid.UUID{firstUUID},
+		// r := rand.New(rand.NewSource(getSeed()))
+
 		// ipaddr:            nil,
 		ipv4: true,
 		// network:           "ip",
 		protocol: "icmp",
-		// awaitingSequences: firstSequence,
-		TTL:    64,
-		logger: logger,
-		Task:   make(map[int]pingIPCache, 0),
+		TTL:      64,
+		logger:   logger,
+		Task:     make(map[int]pingIPCache, 0),
 	}
 }
 
@@ -339,6 +340,9 @@ func (p *pingeserver) CloseTask(i int) {
 
 func (p *pingeserver) sendICMP(pp PingIP) {
 	msgBytes, dst := pp.SendPrexHook()
+	if dst == nil {
+		return
+	}
 	// panic(fmt.Sprint("send: ", msgBytes, dst))
 	for {
 		if _, err := p.conn.WriteTo(msgBytes, dst); err != nil {
@@ -487,20 +491,19 @@ type PingIPTask struct {
 	Timeout  time.Duration
 	protocol string
 	logger   Logger
-	// awaitingSequences map[uuid.UUID]map[int]struct{}
-	rstCh  chan *Statistics
-	recvCh chan struct{}
-	pinger Pinger
+	rstCh    chan *Statistics
+	recvCh   chan struct{}
+	pinger   Pinger
+	Size     int
+
+	trackerUUID       uuid.UUID
+	awaitingSequences map[int]struct{}
 }
 
 func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	if p.r == nil {
 		p.r = rand.New(rand.NewSource(getSeed()))
 	}
-
-	// firstUUID := uuid.New()
-	// var firstSequence = map[uuid.UUID]map[int]struct{}{}
-	// firstSequence[firstUUID] = make(map[int]struct{})
 	if len(addr) == 0 {
 		logger.Errorf("addr cannot be empty")
 		return
@@ -510,6 +513,8 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 		logger.Errorf(err.Error())
 		return
 	}
+	p.trackerUUID = uuid.New()
+	p.awaitingSequences = make(map[int]struct{}, 0)
 	p.Count = count
 	p.Interval = 500 * time.Millisecond
 	p.RecordRtts = true
@@ -527,9 +532,13 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	p.rtts = make([]time.Duration, 0, count)
 	p.recvCh = make(chan struct{}, count)
 	p.pinger = pinger
+	p.Size = timeSliceLength + trackerLength
 }
 
 func (p *PingIPTask) Reset() {
+	p.trackerUUID = uuid.Nil
+	p.awaitingSequences = nil
+	p.Size = 0
 	p.id = 0
 	p.sequence = 0
 	p.ipaddr = nil
@@ -608,21 +617,27 @@ func (p *PingIPTask) ICMPRequestType() icmp.Type {
 	return ipv4.ICMPTypeEcho
 }
 
+// getPacketUUID scans the tracking slice for matches.
+func (p *PingIPTask) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
+	var packetUUID uuid.UUID
+	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
+	if err != nil {
+		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
+	}
+	return &packetUUID, nil
+}
+
 func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
 	var dst net.Addr = p.ipaddr
 	if p.protocol == "udp" {
 		dst = &net.UDPAddr{IP: p.ipaddr.IP, Zone: p.ipaddr.Zone}
 	}
-	// currentUUID := p.getCurrentTrackerUUID()
-	// uuidEncoded, err := currentUUID.MarshalBinary()
-	// if err != nil {
-	// 	return fmt.Errorf("unable to marshal UUID binary: %w", err)
-	// }
-	// t := append(timeToBytes(time.Now()), uuidEncoded...)
-	t := timeToBytes(time.Now())
-	// if remainSize := p.Size - timeSliceLength - trackerLength; remainSize > 0 {
-	// 	t = append(t, bytes.Repeat([]byte{1}, remainSize)...)
-	// }
+	uuidEncoded, err := p.trackerUUID.MarshalBinary()
+	if err != nil {
+		p.logger.Errorf("unable to marshal UUID binary: %w", err)
+		return nil, nil
+	}
+	t := append(timeToBytes(time.Now()), uuidEncoded...)
 
 	body := &icmp.Echo{
 		ID:   p.id,
@@ -644,47 +659,33 @@ func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
 }
 
 func (p *PingIPTask) SendBackHook() {
-	// handler := p.OnSend
-	// if handler != nil {
-	// 	outPkt := &Packet{
-	// 		Nbytes: len(msgBytes),
-	// 		IPAddr: p.ipaddr,
-	// 		Addr:   p.addr,
-	// 		Seq:    p.sequence,
-	// 		ID:     p.id,
-	// 	}
-	// 	handler(outPkt)
-	// }
-	// mark this sequence as in-flight
-	// p.awaitingSequences[currentUUID][p.sequence] = struct{}{}
 	p.PacketsSent++
 	p.sequence++
 	if p.sequence > 65535 {
-		// newUUID := uuid.New()
-		// p.trackerUUIDs = append(p.trackerUUIDs, newUUID)
-		// p.awaitingSequences[newUUID] = make(map[int]struct{})
+		p.trackerUUID = uuid.New()
+		p.awaitingSequences = make(map[int]struct{})
 		p.sequence = 0
 	}
-	// break
 }
 
 // RecvBackHook return true, close
 func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
-
-	// if !p.matchID(pkt.ID) {
-	// 	return nil
-	// }
-
 	if len(r.Data) < timeSliceLength+trackerLength {
-		p.logger.Errorf("insufficient data received; got: %d %v",
-			len(r.Data), r.Data)
+		return
 	}
-
-	// pktUUID, err := p.getPacketUUID(pkt.Data)
-	// if err != nil || pktUUID == nil {
-	// 	return err
-	// }
-
+	pktUUID, err := p.getPacketUUID(r.Data)
+	// fmt.Println(*pktUUID, p.trackerUUID, p.awaitingSequences)
+	if err != nil {
+		p.logger.Errorf("RecvBackHook[%v][%v]", err, pktUUID)
+		return
+	}
+	if *pktUUID != p.trackerUUID {
+		return
+	}
+	if _, ok := p.awaitingSequences[r.Seq]; ok {
+		return
+	}
+	p.awaitingSequences[r.Seq] = struct{}{}
 	timestamp := bytesToTime(r.Data[:timeSliceLength])
 	p.updateStatistics(&Packet{
 		// Nbytes: recv.nbytes,
