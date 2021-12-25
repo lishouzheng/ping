@@ -2,17 +2,20 @@ package ping
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 )
 
 func Example1() {
 	// Output:
-	pinger := Default(NoopLogger{})
-	var pp PingIPTask
-	pp.New("", 3, NoopLogger{})
-
-	pp.Start(pinger)
-	fmt.Println(pp.Rst())
-
+	r := rand.New(rand.NewSource(getSeed()))
+	fmt.Println(r.Intn(math.MaxUint16))
+	fmt.Println(r.Intn(math.MaxUint16))
+	fmt.Println(r.Intn(math.MaxUint16))
+	fmt.Println(r.Intn(math.MaxUint16))
+	fmt.Println(r.Intn(math.MaxUint16))
+	fmt.Println(r.Intn(math.MaxUint16))
+	fmt.Println(r.Intn(math.MaxUint16))
 }
 
 // b, _ := json.Marshal(pp.Rst())

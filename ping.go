@@ -442,6 +442,7 @@ type PingIP interface {
 }
 
 type PingIPTask struct {
+	r        *rand.Rand
 	id       int
 	sequence int
 	ipaddr   *net.IPAddr
@@ -485,7 +486,10 @@ type PingIPTask struct {
 }
 
 func (p *PingIPTask) New(addr string, count int, logger Logger) {
-	r := rand.New(rand.NewSource(getSeed()))
+	if p.r == nil {
+		p.r = rand.New(rand.NewSource(getSeed()))
+	}
+
 	// firstUUID := uuid.New()
 	// var firstSequence = map[uuid.UUID]map[int]struct{}{}
 	// firstSequence[firstUUID] = make(map[int]struct{})
@@ -504,7 +508,7 @@ func (p *PingIPTask) New(addr string, count int, logger Logger) {
 	p.Timeout = 10 * time.Second
 	p.addr = addr
 	// done:              make(chan interface{}),
-	p.id = r.Intn(math.MaxUint16)
+	p.id = p.r.Intn(math.MaxUint16)
 	// trackerUUIDs:      []uuid.UUID{firstUUID},
 	p.ipaddr = ipaddr
 	// ipv4:              false,
