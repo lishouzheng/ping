@@ -572,18 +572,17 @@ func (p *PingIPTask) Start(pinger Pinger) {
 		t := time.NewTimer(p.Timeout)
 		var c int
 		defer t.Stop()
-		defer func() {
-			close(p.recvCh)
-		}()
 		for {
 			select {
 			case <-t.C:
 				p.rstCh <- p.Statistics()
+				close(p.recvCh)
 				return
 			case <-p.recvCh:
 				c++
 				if c >= p.Count {
 					p.rstCh <- p.Statistics()
+					close(p.recvCh)
 					return
 				}
 			}
