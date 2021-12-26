@@ -588,7 +588,8 @@ func (p *PingIPTask) Reset() {
 func (p *PingIPTask) Start() {
 	go func() {
 		for i := 0; i < p.Count; i++ {
-			go p.pinger.Send(p)
+			// 这里不需要并发, 就是要间隔发送
+			p.pinger.Send(p)
 			time.Sleep(p.Interval)
 		}
 	}()
