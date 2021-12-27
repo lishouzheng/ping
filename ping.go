@@ -181,12 +181,15 @@ func (p *pingeserver) RecvRun() {
 	var err error
 	if p.Size < timeSliceLength+trackerLength {
 		p.logger.Errorf("size %d is less than minimum required size %d", p.Size, timeSliceLength+trackerLength)
+		return
 	}
 	if err != nil {
 		p.logger.Errorf("RecvRun Err[%v]", err)
+		return
 	}
 	if conn, err = p.listen(); err != nil {
 		p.logger.Errorf("RecvRun Err[%v]", err)
+		return
 	}
 	// defer conn.Close()
 	conn.SetTTL(p.TTL)
@@ -229,6 +232,7 @@ func (p *pingeserver) recvICMP() {
 			n, ttl, _, err = p.conn.ReadFrom(bytes)
 			if err != nil {
 				p.logger.Errorf("Recv Err[%v]", err)
+				continue
 			}
 			go p.processPacket(&packet{bytes: bytes, nbytes: n, ttl: ttl})
 		}
@@ -368,7 +372,7 @@ func (p *pingeserver) listen() (packetConn, error) {
 	)
 
 	if p.ipv4 {
-		var c icmpv4Conn
+		var c icmpv4Conn = icmpv4Conn{logger: p.logger}
 		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
 		conn = &c
 	} else {
@@ -666,6 +670,7 @@ func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
 	msgBytes, err := msg.Marshal(nil)
 	if err != nil {
 		p.logger.Errorf("msgBytes Err[%v]", err)
+		return nil, nil
 	}
 	return msgBytes, dst
 }

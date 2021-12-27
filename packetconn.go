@@ -1,6 +1,7 @@
 package ping
 
 import (
+	"fmt"
 	"net"
 	"runtime"
 	"time"
@@ -55,6 +56,7 @@ func (c *icmpConn) WriteTo(b []byte, dst net.Addr) (int, error) {
 
 type icmpv4Conn struct {
 	icmpConn
+	logger Logger
 }
 
 func (c *icmpv4Conn) SetFlagTTL() error {
@@ -65,7 +67,15 @@ func (c *icmpv4Conn) SetFlagTTL() error {
 	return err
 }
 
-func (c *icmpv4Conn) ReadFrom(b []byte) (int, int, net.Addr, error) {
+func (c *icmpv4Conn) ReadFrom(b []byte) (n int, m int, src net.Addr, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			n = 0
+			m = 0
+			src = nil
+			err = fmt.Errorf("%v", r)
+		}
+	}()
 	var ttl int
 	n, cm, src, err := c.c.IPv4PacketConn().ReadFrom(b)
 	if cm != nil {
