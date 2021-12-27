@@ -302,7 +302,9 @@ func (p *pingeserver) Send(pp PingIP) {
 func (p *pingeserver) CloseTask(i int) {
 	p.RWMtx.Lock()
 	defer p.RWMtx.Unlock()
-	delete(p.Task, i)
+	if _, ok := p.Task[i]; ok {
+		delete(p.Task, i)
+	}
 }
 
 // var (
@@ -587,6 +589,12 @@ func (p *PingIPTask) Reset() {
 
 func (p *PingIPTask) Start() {
 	go func() {
+		defer func() {
+			// 不需要后续处理, 自会接收超时
+			if r := recover(); r != nil {
+				p.logger.Errorf("PingIPTask Err[%v]", r)
+			}
+		}()
 		for i := 0; i < p.Count; i++ {
 			// 这里不需要并发, 就是要间隔发送
 			p.pinger.Send(p)
