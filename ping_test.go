@@ -4,6 +4,11 @@ import (
 	"fmt"
 )
 
+// pinger := Default(NoopLogger{})
+// pp := PingIPTask{}
+// pp.New("baidu.com", 5, NoopLogger{}, pinger)
+// pp.Start()
+// fmt.Println(pp.Rst())
 func Example1() {
 	// Output:
 	pinger := Default(NoopLogger{})

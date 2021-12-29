@@ -458,8 +458,11 @@ type PingIP interface {
 	RecvBackHook(RecvPakcet)
 }
 
+var (
+	r *rand.Rand = rand.New(rand.NewSource(getSeed()))
+)
+
 type PingIPTask struct {
-	r        *rand.Rand
 	id       int
 	sequence int
 	ipaddr   *net.IPAddr
@@ -508,9 +511,6 @@ type PingIPTask struct {
 }
 
 func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
-	if p.r == nil {
-		p.r = rand.New(rand.NewSource(getSeed()))
-	}
 	if len(addr) == 0 {
 		logger.Errorf("addr cannot be empty")
 		return
@@ -528,7 +528,7 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	p.Timeout = 10 * time.Second
 	p.addr = addr
 	// done:              make(chan interface{}),
-	p.id = p.r.Intn(math.MaxUint16)
+	p.id = r.Intn(math.MaxUint16)
 	// trackerUUIDs:      []uuid.UUID{firstUUID},
 	p.ipaddr = ipaddr
 	// ipv4:              false,
@@ -596,7 +596,11 @@ func (p *PingIPTask) Start() {
 		defer func() {
 			// 不需要后续处理, 自会接收超时
 			if r := recover(); r != nil {
-				p.logger.Errorf("PingIPTask Err[%v]", r)
+				if p.logger != nil {
+					p.logger.Errorf("PingIPTask Err[%v]", r)
+				} else {
+					fmt.Printf("PingIPTask Err[%v]", r)
+				}
 			}
 		}()
 		for i := 0; i < p.Count; i++ {
