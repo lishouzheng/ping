@@ -83,9 +83,10 @@ var (
 	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 )
 
-var (
-	r *rand.Rand = rand.New(rand.NewSource(getSeed()))
-)
+func init() {
+	// 全局rand自带锁
+	rand.Seed(time.Now().Unix())
+}
 
 func NewPinger(logger Logger) Pinger {
 	p := New(logger)
@@ -536,7 +537,7 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	p.Timeout = 10 * time.Second
 	p.addr = addr
 	// done:              make(chan interface{}),
-	p.id = r.Intn(math.MaxUint16)
+	p.id = rand.Intn(math.MaxUint16)
 	// trackerUUIDs:      []uuid.UUID{firstUUID},
 	p.ipaddr = ipaddr
 	// ipv4:              false,
