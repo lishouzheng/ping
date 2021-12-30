@@ -76,20 +76,30 @@ const (
 )
 
 var (
-	ipv4Proto = map[string]string{"icmp": "ip4:icmp", "udp": "udp4"}
+	ipv4Proto = map[string]func() string{
+		"icmp": func() string { return "ip4:" + fmt.Sprint(r.Intn(100)) },
+		"udp":  func() string { return "udp4" }}
 	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 )
 
-func Default(logger Logger) Pinger {
+var (
+	r *rand.Rand = rand.New(rand.NewSource(getSeed()))
+)
+
+func NewPinger(logger Logger) Pinger {
 	p := New(logger)
 	p.RecvRun()
-	// go p.StartCheck()
 	return p
+}
+
+func Default(logger Logger) Pinger {
+	return NewPinger(logger)
 }
 
 type Pinger interface {
 	Send(pp PingIP)
 	CloseTask(int)
+	Stop()
 }
 
 // New returns a new Pinger struct pointer.
@@ -215,6 +225,7 @@ func (p *pingeserver) Stop() {
 	if open {
 		close(p.done)
 	}
+	p.conn.Close()
 }
 
 func (p *pingeserver) recvICMP() {
@@ -373,7 +384,7 @@ func (p *pingeserver) listen() (packetConn, error) {
 
 	if p.ipv4 {
 		var c icmpv4Conn = icmpv4Conn{logger: p.logger}
-		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol], p.Source)
+		c.c, err = icmp.ListenPacket(ipv4Proto[p.protocol](), p.Source)
 		conn = &c
 	} else {
 		var c icmpV6Conn
@@ -457,10 +468,6 @@ type PingIP interface {
 	SendBackHook()
 	RecvBackHook(RecvPakcet)
 }
-
-var (
-	r *rand.Rand = rand.New(rand.NewSource(getSeed()))
-)
 
 type PingIPTask struct {
 	id       int
