@@ -77,7 +77,8 @@ const (
 
 var (
 	ipv4Proto = map[string]func() string{
-		"icmp": func() string { return "ip4:" + fmt.Sprint(r.Intn(100)) },
+		// icmp协议号为1
+		"icmp": func() string { return "ip4:icmp" },
 		"udp":  func() string { return "udp4" }}
 	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 )
