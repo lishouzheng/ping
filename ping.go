@@ -82,6 +82,14 @@ var (
 		"udp":  func() string { return "udp4" }}
 	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 )
+var (
+	// 负责错误处理回调
+	ErrorInf ErrorCallback
+)
+
+type ErrorCallback interface {
+	F(err error)
+}
 
 func init() {
 	// 全局rand自带锁
@@ -371,6 +379,9 @@ func (p *pingeserver) sendICMP(pp PingIP) {
 				}
 			}
 			p.logger.Errorf("sendICMP Err[%v]", err)
+			if handler := ErrorInf; handler != nil {
+				handler.F(err)
+			}
 			return
 		}
 		pp.SendBackHook()
