@@ -1,6 +1,6 @@
 package ping
 
-import "time"
+import "fmt"
 
 // pinger := Default(NoopLogger{})
 // pp := PingIPTask{}
@@ -9,16 +9,15 @@ import "time"
 // fmt.Println(pp.Rst())
 func Example1() {
 	// Output:
-	pinger1 := NewPinger(NoopLogger{})
-	pinger2 := NewPinger(NoopLogger{})
-	pinger3 := NewPinger(NoopLogger{})
-	pinger4 := NewPinger(NoopLogger{})
-	time.Sleep(1 * time.Minute)
-	pinger1.Stop()
-	pinger2.Stop()
-	pinger3.Stop()
-	time.Sleep(20 * time.Minute)
-	pinger4.Stop()
+	pinger := Default(NoopLogger{})
+	pp := PingIPTask{}
+	pp2 := PingIPTask{}
+	pp.New("baidu.com", 5, NoopLogger{}, pinger)
+	pp2.New("baidu.com", 5, NoopLogger{}, pinger)
+	pp.Start()
+	pp2.Start()
+	fmt.Println(pp.Rst())
+	fmt.Println(pp2.Rst())
 }
 
 // b, _ := json.Marshal(pp.Rst())

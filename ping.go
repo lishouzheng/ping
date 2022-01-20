@@ -108,7 +108,7 @@ func Default(logger Logger) Pinger {
 
 type Pinger interface {
 	Send(pp PingIP)
-	CloseTask(int)
+	CloseTask(uuid.UUID)
 	Stop()
 }
 
@@ -135,7 +135,7 @@ func New(logger Logger) *pingeserver {
 		protocol: "icmp",
 		TTL:      64,
 		logger:   logger,
-		Task:     make(map[int]pingIPCache, 0),
+		Task:     make(map[uuid.UUID]pingIPCache, 0),
 	}
 }
 
@@ -151,7 +151,7 @@ type pingIPCache struct {
 
 // pingeserver represents a packet sender/receiver.
 type pingeserver struct {
-	Task  map[int]pingIPCache
+	Task  map[uuid.UUID]pingIPCache
 	RWMtx sync.RWMutex
 	conn  packetConn
 
@@ -263,6 +263,7 @@ func (p *pingeserver) recvICMP() {
 type RecvPakcet struct {
 	ID         int
 	Seq        int
+	PktUUID    *uuid.UUID
 	Data       []byte
 	ReceivedAt time.Time
 }
@@ -288,8 +289,18 @@ func (p *pingeserver) processPacket(recv *packet) {
 	}
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
+		if len(pkt.Data) < timeSliceLength+trackerLength {
+			return
+		}
+		pktUUID, err := p.getPacketUUID(pkt.Data)
+		// fmt.Println(*pktUUID, p.trackerUUID, p.awaitingSequences)
+		if err != nil {
+			p.logger.Errorf("processPacket[%v][%v]", err, pktUUID)
+			return
+		}
+
 		p.RWMtx.RLock()
-		task, ok := p.Task[pkt.ID]
+		task, ok := p.Task[*pktUUID]
 		p.RWMtx.RUnlock()
 		if !ok {
 			return
@@ -303,6 +314,7 @@ func (p *pingeserver) processPacket(recv *packet) {
 			task.p.RecvBackHook(RecvPakcet{
 				ID:         pkt.ID,
 				Seq:        pkt.Seq,
+				PktUUID:    pktUUID,
 				Data:       pkt.Data,
 				ReceivedAt: receivedAt,
 			})
@@ -314,9 +326,19 @@ func (p *pingeserver) processPacket(recv *packet) {
 	return
 }
 
+// getPacketUUID scans the tracking slice for matches.
+func (p *pingeserver) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
+	var packetUUID uuid.UUID
+	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
+	if err != nil {
+		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
+	}
+	return &packetUUID, nil
+}
+
 func (p *pingeserver) Send(pp PingIP) {
 	p.RWMtx.Lock()
-	p.Task[pp.ID()] = pingIPCache{
+	p.Task[pp.UUID()] = pingIPCache{
 		p: pp,
 		t: time.Now(),
 	}
@@ -324,11 +346,11 @@ func (p *pingeserver) Send(pp PingIP) {
 	p.sendICMP(pp)
 }
 
-func (p *pingeserver) CloseTask(i int) {
+func (p *pingeserver) CloseTask(u uuid.UUID) {
 	p.RWMtx.Lock()
 	defer p.RWMtx.Unlock()
-	if _, ok := p.Task[i]; ok {
-		delete(p.Task, i)
+	if _, ok := p.Task[u]; ok {
+		delete(p.Task, u)
 	}
 }
 
@@ -476,7 +498,7 @@ type Statistics struct {
 }
 
 type PingIP interface {
-	ID() int
+	UUID() uuid.UUID
 	SendPrexHook() (b []byte, dst net.Addr)
 	SendBackHook()
 	RecvBackHook(RecvPakcet)
@@ -636,12 +658,12 @@ func (p *PingIPTask) Start() {
 			select {
 			case <-p.recvCh:
 				if p.PacketsRecv >= p.Count {
-					p.pinger.CloseTask(p.id)
+					p.pinger.CloseTask(p.trackerUUID)
 					p.rstCh <- p.Statistics()
 					return
 				}
 			case <-t.C:
-				p.pinger.CloseTask(p.id)
+				p.pinger.CloseTask(p.trackerUUID)
 				p.rstCh <- p.Statistics()
 				return
 			}
@@ -657,14 +679,8 @@ func (p *PingIPTask) ICMPRequestType() icmp.Type {
 	return ipv4.ICMPTypeEcho
 }
 
-// getPacketUUID scans the tracking slice for matches.
-func (p *PingIPTask) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
-	var packetUUID uuid.UUID
-	err := packetUUID.UnmarshalBinary(pkt[timeSliceLength : timeSliceLength+trackerLength])
-	if err != nil {
-		return nil, fmt.Errorf("error decoding tracking UUID: %w", err)
-	}
-	return &packetUUID, nil
+func (p *PingIPTask) UUID() uuid.UUID {
+	return p.trackerUUID
 }
 
 func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
@@ -713,16 +729,7 @@ func (p *PingIPTask) SendBackHook() {
 
 // RecvBackHook return true, close
 func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
-	if len(r.Data) < timeSliceLength+trackerLength {
-		return
-	}
-	pktUUID, err := p.getPacketUUID(r.Data)
-	// fmt.Println(*pktUUID, p.trackerUUID, p.awaitingSequences)
-	if err != nil {
-		p.logger.Errorf("RecvBackHook[%v][%v]", err, pktUUID)
-		return
-	}
-	if *pktUUID != p.trackerUUID {
+	if *r.PktUUID != p.trackerUUID {
 		return
 	}
 	p.mtx.Lock()
