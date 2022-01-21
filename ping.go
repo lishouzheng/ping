@@ -108,7 +108,8 @@ func Default(logger Logger) Pinger {
 
 type Pinger interface {
 	Send(pp PingIP)
-	CloseTask(uuid.UUID)
+	AddTask(pp PingIP)
+	CloseTask(pp PingIP)
 	Stop()
 }
 
@@ -146,14 +147,14 @@ func New(logger Logger) *pingeserver {
 
 type pingIPCache struct {
 	p PingIP
-	t time.Time
 }
 
 // pingeserver represents a packet sender/receiver.
 type pingeserver struct {
-	Task  map[uuid.UUID]pingIPCache
-	RWMtx sync.RWMutex
-	conn  packetConn
+	TaskID [math.MaxUint16]int
+	Task   map[uuid.UUID]pingIPCache
+	RWMtx  sync.RWMutex
+	conn   packetConn
 
 	// Size of packet being sent
 	Size int
@@ -289,16 +290,30 @@ func (p *pingeserver) processPacket(recv *packet) {
 	}
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
+		// fmt.Println("start...", p.Task)
+		// for i, n := range p.TaskID {
+		// 	if n > 0 {
+		// 		fmt.Println(i, n)
+		// 	}
+		// }
+		// fmt.Println("end, ", pkt.ID)
+		// 先检查ID, 减少解析; 优化性能
+		p.RWMtx.RLock()
+		if p.TaskID[pkt.ID] <= 0 {
+			p.RWMtx.RUnlock()
+			return
+		}
+		p.RWMtx.RUnlock()
+		// 开始解析
 		if len(pkt.Data) < timeSliceLength+trackerLength {
 			return
 		}
 		pktUUID, err := p.getPacketUUID(pkt.Data)
-		// fmt.Println(*pktUUID, p.trackerUUID, p.awaitingSequences)
 		if err != nil {
 			p.logger.Errorf("processPacket[%v][%v]", err, pktUUID)
 			return
 		}
-
+		// 分流
 		p.RWMtx.RLock()
 		task, ok := p.Task[*pktUUID]
 		p.RWMtx.RUnlock()
@@ -336,22 +351,27 @@ func (p *pingeserver) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
 	return &packetUUID, nil
 }
 
-func (p *pingeserver) Send(pp PingIP) {
+func (p *pingeserver) AddTask(pp PingIP) {
 	p.RWMtx.Lock()
+	defer p.RWMtx.Unlock()
+	p.TaskID[pp.ID()] += 1
 	p.Task[pp.UUID()] = pingIPCache{
 		p: pp,
-		t: time.Now(),
 	}
-	p.RWMtx.Unlock()
+
+}
+
+func (p *pingeserver) Send(pp PingIP) {
 	p.sendICMP(pp)
 }
 
-func (p *pingeserver) CloseTask(u uuid.UUID) {
+func (p *pingeserver) CloseTask(pp PingIP) {
 	p.RWMtx.Lock()
 	defer p.RWMtx.Unlock()
-	if _, ok := p.Task[u]; ok {
-		delete(p.Task, u)
+	if _, ok := p.Task[pp.UUID()]; ok {
+		delete(p.Task, pp.UUID())
 	}
+	p.TaskID[pp.ID()] -= 1
 }
 
 // var (
@@ -499,6 +519,7 @@ type Statistics struct {
 
 type PingIP interface {
 	UUID() uuid.UUID
+	ID() int
 	SendPrexHook() (b []byte, dst net.Addr)
 	SendBackHook()
 	RecvBackHook(RecvPakcet)
@@ -645,6 +666,7 @@ func (p *PingIPTask) Start() {
 				}
 			}
 		}()
+		p.pinger.AddTask(p)
 		for i := 0; i < p.Count; i++ {
 			// 这里不需要并发, 就是要间隔发送
 			p.pinger.Send(p)
@@ -658,12 +680,12 @@ func (p *PingIPTask) Start() {
 			select {
 			case <-p.recvCh:
 				if p.PacketsRecv >= p.Count {
-					p.pinger.CloseTask(p.trackerUUID)
+					p.pinger.CloseTask(p)
 					p.rstCh <- p.Statistics()
 					return
 				}
 			case <-t.C:
-				p.pinger.CloseTask(p.trackerUUID)
+				p.pinger.CloseTask(p)
 				p.rstCh <- p.Statistics()
 				return
 			}
