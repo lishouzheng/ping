@@ -151,7 +151,7 @@ type pingIPCache struct {
 
 // pingeserver represents a packet sender/receiver.
 type pingeserver struct {
-	TaskID [math.MaxUint16]int
+	TaskID [math.MaxUint16]int64
 	Task   map[uuid.UUID]pingIPCache
 	RWMtx  sync.RWMutex
 	conn   packetConn
@@ -290,20 +290,19 @@ func (p *pingeserver) processPacket(recv *packet) {
 	}
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		// fmt.Println("start...", p.Task)
-		// for i, n := range p.TaskID {
-		// 	if n > 0 {
-		// 		fmt.Println(i, n)
-		// 	}
-		// }
-		// fmt.Println("end, ", pkt.ID)
+		fmt.Println("start...", p.Task)
+		for i, n := range p.TaskID {
+			if n > 0 {
+				fmt.Println(i, n)
+			}
+		}
+		fmt.Println("end, ", pkt.ID)
 		// 先检查ID, 减少解析; 优化性能
-		p.RWMtx.RLock()
-		if p.TaskID[pkt.ID] <= 0 {
-			p.RWMtx.RUnlock()
+
+		f := atomic.LoadInt64(&p.TaskID[pkt.ID])
+		if f <= 0 {
 			return
 		}
-		p.RWMtx.RUnlock()
 		// 开始解析
 		if len(pkt.Data) < timeSliceLength+trackerLength {
 			return
@@ -352,9 +351,9 @@ func (p *pingeserver) getPacketUUID(pkt []byte) (*uuid.UUID, error) {
 }
 
 func (p *pingeserver) AddTask(pp PingIP) {
+	atomic.AddInt64(&p.TaskID[pp.ID()], 1)
 	p.RWMtx.Lock()
 	defer p.RWMtx.Unlock()
-	p.TaskID[pp.ID()] += 1
 	p.Task[pp.UUID()] = pingIPCache{
 		p: pp,
 	}
@@ -366,12 +365,12 @@ func (p *pingeserver) Send(pp PingIP) {
 }
 
 func (p *pingeserver) CloseTask(pp PingIP) {
+	atomic.AddInt64(&p.TaskID[pp.ID()], -1)
 	p.RWMtx.Lock()
 	defer p.RWMtx.Unlock()
 	if _, ok := p.Task[pp.UUID()]; ok {
 		delete(p.Task, pp.UUID())
 	}
-	p.TaskID[pp.ID()] -= 1
 }
 
 // var (
