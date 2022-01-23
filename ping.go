@@ -290,13 +290,13 @@ func (p *pingeserver) processPacket(recv *packet) {
 	}
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		fmt.Println("start...", p.Task)
-		for i, n := range p.TaskID {
-			if n > 0 {
-				fmt.Println(i, n)
-			}
-		}
-		fmt.Println("end, ", pkt.ID)
+		// fmt.Println("start...", p.Task)
+		// for i, n := range p.TaskID {
+		// 	if n > 0 {
+		// 		fmt.Println(i, n)
+		// 	}
+		// }
+		// fmt.Println("end, ", pkt.ID)
 		// 先检查ID, 减少解析; 优化性能
 
 		f := atomic.LoadInt64(&p.TaskID[pkt.ID])
