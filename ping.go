@@ -151,7 +151,7 @@ type pingIPCache struct {
 
 // pingeserver represents a packet sender/receiver.
 type pingeserver struct {
-	TaskID [math.MaxUint16]int64
+	TaskID [math.MaxUint16 + 1]int64
 	Task   map[uuid.UUID]pingIPCache
 	RWMtx  sync.RWMutex
 	conn   packetConn
@@ -750,16 +750,15 @@ func (p *PingIPTask) SendBackHook() {
 
 // RecvBackHook return true, close
 func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
-	if *r.PktUUID != p.trackerUUID {
+	if r.ID != p.id {
 		return
 	}
 	p.mtx.Lock()
 	_, ok := p.awaitingSequences[r.Seq]
-	p.mtx.Unlock()
 	if ok {
+		p.mtx.Unlock()
 		return
 	}
-	p.mtx.Lock()
 	p.awaitingSequences[r.Seq] = struct{}{}
 	p.mtx.Unlock()
 	timestamp := bytesToTime(r.Data[:timeSliceLength])
