@@ -661,7 +661,10 @@ func (p *PingIPTask) Start() {
 				if p.logger != nil {
 					p.logger.Errorf("PingIPTask Err[%v]", r)
 				} else {
-					fmt.Printf("PingIPTask Err[%v]", r)
+					fmt.Printf("PingIPTask Err[%v]\n", r)
+				}
+				if handler := ErrorInf; handler != nil {
+					handler.F(fmt.Errorf("%v", r))
 				}
 			}
 		}()
