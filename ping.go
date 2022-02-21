@@ -678,9 +678,10 @@ func (p *PingIPTask) Start() {
 	go func() {
 		t := time.NewTimer(p.Timeout)
 		defer t.Stop()
+		recvCh := p.recvCh
 		for {
 			select {
-			case <-p.recvCh:
+			case <-recvCh:
 				if p.PacketsRecv >= p.Count {
 					p.pinger.CloseTask(p)
 					p.rstCh <- p.Statistics()
@@ -774,7 +775,11 @@ func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 		Seq: r.Seq,
 		Rtt: r.ReceivedAt.Sub(timestamp),
 	})
-	p.recvCh <- struct{}{}
+	// nil chan会阻塞
+	select {
+	case p.recvCh <- struct{}{}:
+	default:
+	}
 }
 
 func (p *PingIPTask) Rst() *Statistics {
