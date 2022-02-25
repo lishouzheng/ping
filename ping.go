@@ -587,7 +587,7 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	p.Count = count
 	p.Interval = 500 * time.Millisecond
 	p.RecordRtts = true
-	p.Timeout = 40 * time.Second
+	p.Timeout = 25 * time.Second
 	p.addr = addr
 	// done:              make(chan interface{}),
 	p.id = rand.Intn(math.MaxUint16)
