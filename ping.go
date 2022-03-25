@@ -604,8 +604,8 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 	p.Size = timeSliceLength + trackerLength
 }
 
-// 共29个字段, 其中重置26个
-// rand不用重置, mtx和rwmtx不用重置
+// 共28个字段, 其中重置28个
+// mtx和rwmtx也要重置
 func (p *PingIPTask) Reset() {
 	p.trackerUUID = uuid.Nil
 	p.awaitingSequences = nil
@@ -651,6 +651,8 @@ func (p *PingIPTask) Reset() {
 	p.rstCh = nil
 	p.recvCh = nil
 	p.pinger = nil
+	p.mtx = sync.Mutex{}
+	p.statsMu = sync.RWMutex{}
 }
 
 func (p *PingIPTask) Start() {
@@ -741,6 +743,11 @@ func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
 }
 
 func (p *PingIPTask) SendBackHook() {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Errorf("SendBackHook Err[%v]", r)
+		}
+	}()
 	p.PacketsSent++
 	p.sequence++
 	if p.sequence > 65535 {
@@ -754,6 +761,11 @@ func (p *PingIPTask) SendBackHook() {
 
 // RecvBackHook return true, close
 func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Errorf("RecvBackHook Err[%v]", r)
+		}
+	}()
 	if r.ID != p.id {
 		return
 	}
@@ -791,6 +803,11 @@ func (p *PingIPTask) Rst() *Statistics {
 // }
 
 func (p *PingIPTask) updateStatistics(pkt *Packet) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Errorf("updateStatistics Err[%v]", r)
+		}
+	}()
 	p.statsMu.Lock()
 	defer p.statsMu.Unlock()
 
@@ -817,6 +834,11 @@ func (p *PingIPTask) updateStatistics(pkt *Packet) {
 }
 
 func (p *PingIPTask) Statistics() *Statistics {
+	defer func() {
+		if r := recover(); r != nil {
+			p.logger.Errorf("Statistics Err[%v]", r)
+		}
+	}()
 	p.statsMu.RLock()
 	defer p.statsMu.RUnlock()
 	sent := p.PacketsSent
