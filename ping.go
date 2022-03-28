@@ -754,33 +754,36 @@ func (p *PingIPTask) SendBackHook() {
 	}()
 	p.PacketsSent++
 	p.sequence++
+
 	if p.sequence > 65535 {
+		mtx := &p.mtx
 		p.trackerUUID = uuid.New()
-		p.mtx.Lock()
+		mtx.Lock()
 		p.awaitingSequences = make(map[int]struct{})
-		p.mtx.Unlock()
+		mtx.Unlock()
 		p.sequence = 0
 	}
 }
 
 // RecvBackHook return true, close
 func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
+	if r.ID != p.id {
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Errorf("RecvBackHook Err[%v]", r)
 		}
 	}()
-	if r.ID != p.id {
-		return
-	}
-	p.mtx.Lock()
+	mtx := &p.mtx
+	mtx.Lock()
 	_, ok := p.awaitingSequences[r.Seq]
 	if ok {
-		p.mtx.Unlock()
+		mtx.Unlock()
 		return
 	}
 	p.awaitingSequences[r.Seq] = struct{}{}
-	p.mtx.Unlock()
+	mtx.Unlock()
 	timestamp := bytesToTime(r.Data[:timeSliceLength])
 	p.updateStatistics(&Packet{
 		// Nbytes: recv.nbytes,
@@ -807,8 +810,9 @@ func (p *PingIPTask) Rst() *Statistics {
 // }
 
 func (p *PingIPTask) updateStatistics(pkt *Packet) {
-	p.statsMu.Lock()
-	defer p.statsMu.Unlock()
+	statsMu := &p.statsMu
+	statsMu.Lock()
+	defer statsMu.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Errorf("updateStatistics Err[%v]", r)
@@ -837,8 +841,9 @@ func (p *PingIPTask) updateStatistics(pkt *Packet) {
 }
 
 func (p *PingIPTask) Statistics() *Statistics {
-	p.statsMu.RLock()
-	defer p.statsMu.RUnlock()
+	statsMu := &p.statsMu
+	statsMu.RLock()
+	defer statsMu.RUnlock()
 	defer func() {
 		if r := recover(); r != nil {
 			p.logger.Errorf("Statistics Err[%v]", r)
