@@ -685,15 +685,11 @@ func (p *PingIPTask) Start() {
 			select {
 			case <-recvCh:
 				if p.PacketsRecv >= p.Count {
-					// 切断新增访问
-					p.id = 0
 					p.pinger.CloseTask(p)
 					p.rstCh <- p.Statistics()
 					return
 				}
 			case <-t.C:
-				// 切断新增访问
-				p.id = 0
 				p.pinger.CloseTask(p)
 				p.rstCh <- p.Statistics()
 				return
