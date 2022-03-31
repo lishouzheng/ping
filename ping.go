@@ -550,7 +550,7 @@ type PingIPTask struct {
 	avgRtt    time.Duration
 	stdDevRtt time.Duration
 	stddevm2  time.Duration
-	statsMu   sync.RWMutex
+	statsMu   *sync.RWMutex
 
 	// If true, keep a record of rtts of all received packets.
 	// Set to false to avoid memory bloat for long running pings.
@@ -567,7 +567,7 @@ type PingIPTask struct {
 	pinger   Pinger
 	Size     int
 	// 不用重置
-	mtx               sync.Mutex
+	mtx               *sync.Mutex
 	trackerUUID       uuid.UUID
 	awaitingSequences map[int]struct{}
 }
@@ -651,8 +651,8 @@ func (p *PingIPTask) Reset() {
 	p.rstCh = nil
 	p.recvCh = nil
 	p.pinger = nil
-	p.mtx = sync.Mutex{}
-	p.statsMu = sync.RWMutex{}
+	p.mtx = &sync.Mutex{}
+	p.statsMu = &sync.RWMutex{}
 }
 
 func (p *PingIPTask) Start() {
@@ -752,7 +752,7 @@ func (p *PingIPTask) SendBackHook() {
 	p.sequence++
 
 	if p.sequence > 65535 {
-		mtx := &p.mtx
+		mtx := p.mtx
 		p.trackerUUID = uuid.New()
 		mtx.Lock()
 		p.awaitingSequences = make(map[int]struct{})
@@ -771,7 +771,7 @@ func (p *PingIPTask) RecvBackHook(r RecvPakcet) {
 			p.logger.Errorf("RecvBackHook Err[%v]", r)
 		}
 	}()
-	mtx := &p.mtx
+	mtx := p.mtx
 	mtx.Lock()
 	_, ok := p.awaitingSequences[r.Seq]
 	if ok {
@@ -806,7 +806,7 @@ func (p *PingIPTask) Rst() *Statistics {
 // }
 
 func (p *PingIPTask) updateStatistics(pkt *Packet) {
-	statsMu := &p.statsMu
+	statsMu := p.statsMu
 	statsMu.Lock()
 	defer statsMu.Unlock()
 	defer func() {
@@ -837,7 +837,7 @@ func (p *PingIPTask) updateStatistics(pkt *Packet) {
 }
 
 func (p *PingIPTask) Statistics() *Statistics {
-	statsMu := &p.statsMu
+	statsMu := p.statsMu
 	statsMu.RLock()
 	defer statsMu.RUnlock()
 	defer func() {
