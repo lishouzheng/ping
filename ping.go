@@ -57,6 +57,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -80,7 +81,8 @@ var (
 		// icmp协议号为1
 		"icmp": func() string { return "ip4:icmp" },
 		"udp":  func() string { return "udp4" }}
-	ipv6Proto = map[string]string{"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
+	ipv6Proto = map[string]string{
+		"icmp": "ip6:ipv6-icmp", "udp": "udp6"}
 )
 var (
 	// 负责错误处理回调
@@ -97,7 +99,13 @@ func init() {
 }
 
 func NewPinger(logger Logger) Pinger {
-	p := New(logger)
+	p := new(logger)
+	p.RecvRun()
+	return p
+}
+
+func NewPingerIPV6(logger Logger) Pinger {
+	p := newIPV6(logger)
 	p.RecvRun()
 	return p
 }
@@ -113,8 +121,35 @@ type Pinger interface {
 	Stop()
 }
 
-// New returns a new Pinger struct pointer.
-func New(logger Logger) *pingeserver {
+// New returns a new IPV6 Pinger struct pointer.
+func newIPV6(logger Logger) *pingeserver {
+	// r := rand.New(rand.NewSource(getSeed()))
+	firstUUID := uuid.New()
+	var firstSequence = map[uuid.UUID]map[int]struct{}{}
+	firstSequence[firstUUID] = make(map[int]struct{})
+	return &pingeserver{
+		// Count:      -1,
+		// Interval: time.Second,
+		// RecordRtts: true,
+		Size: timeSliceLength + trackerLength,
+		// Timeout: time.Duration(math.MaxInt64),
+		// addr: addr,
+		done: make(chan interface{}),
+		// id:                r.Intn(math.MaxUint16),
+		// r := rand.New(rand.NewSource(getSeed()))
+
+		// ipaddr:            nil,
+		ipv4: false,
+		// network:           "ip",
+		protocol: "icmp",
+		TTL:      64,
+		logger:   logger,
+		Task:     make(map[uuid.UUID]pingIPCache, 0),
+	}
+}
+
+// new returns a new Pinger struct pointer.
+func new(logger Logger) *pingeserver {
 	// r := rand.New(rand.NewSource(getSeed()))
 	firstUUID := uuid.New()
 	var firstSequence = map[uuid.UUID]map[int]struct{}{}
@@ -290,15 +325,6 @@ func (p *pingeserver) processPacket(recv *packet) {
 	}
 	switch pkt := m.Body.(type) {
 	case *icmp.Echo:
-		// fmt.Println("start...", p.Task)
-		// for i, n := range p.TaskID {
-		// 	if n > 0 {
-		// 		fmt.Println(i, n)
-		// 	}
-		// }
-		// fmt.Println("end, ", pkt.ID)
-		// 先检查ID, 减少解析; 优化性能
-
 		f := atomic.LoadInt64(&p.TaskID[pkt.ID])
 		if f <= 0 {
 			return
@@ -411,7 +437,6 @@ func (p *pingeserver) sendICMP(pp PingIP) {
 	if dst == nil {
 		return
 	}
-	// panic(fmt.Sprint("send: ", msgBytes, dst))
 	for {
 		if _, err := p.conn.WriteTo(msgBytes, dst); err != nil {
 			if neterr, ok := err.(*net.OpError); ok {
@@ -570,6 +595,7 @@ type PingIPTask struct {
 	mtx               *sync.Mutex
 	trackerUUID       uuid.UUID
 	awaitingSequences map[int]struct{}
+	ipv4              bool
 }
 
 func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
@@ -582,6 +608,9 @@ func (p *PingIPTask) New(addr string, count int, logger Logger, pinger Pinger) {
 		logger.Errorf(err.Error())
 		return
 	}
+	p.ipv4 = func() bool {
+		return !strings.Contains(ipaddr.String(), ":")
+	}()
 	p.trackerUUID = uuid.New()
 	p.awaitingSequences = make(map[int]struct{}, 0)
 	p.Count = count
@@ -653,6 +682,7 @@ func (p *PingIPTask) Reset() {
 	p.pinger = nil
 	p.mtx = &sync.Mutex{}
 	p.statsMu = &sync.RWMutex{}
+	p.ipv4 = false
 }
 
 func (p *PingIPTask) Start() {
@@ -661,9 +691,7 @@ func (p *PingIPTask) Start() {
 			// 不需要后续处理, 自会接收超时
 			if r := recover(); r != nil {
 				if p.logger != nil {
-					p.logger.Errorf("PingIPTask Err[%v]", r)
-				} else {
-					fmt.Printf("PingIPTask Err[%v]\n", r)
+					p.logger.Errorf("PingIPTask Err[%v]\n", r)
 				}
 				if handler := ErrorInf; handler != nil {
 					handler.F(fmt.Errorf("%v", r))
@@ -706,6 +734,10 @@ func (p *PingIPTask) ICMPRequestType() icmp.Type {
 	return ipv4.ICMPTypeEcho
 }
 
+func (p *PingIPTask) IPV6ICMPRequestType() icmp.Type {
+	return ipv6.ICMPTypeEchoRequest
+}
+
 func (p *PingIPTask) UUID() uuid.UUID {
 	return p.trackerUUID
 }
@@ -729,7 +761,12 @@ func (p *PingIPTask) SendPrexHook() ([]byte, net.Addr) {
 	}
 
 	msg := &icmp.Message{
-		Type: p.ICMPRequestType(),
+		Type: func() icmp.Type {
+			if p.ipv4 {
+				return p.ICMPRequestType()
+			}
+			return p.IPV6ICMPRequestType()
+		}(),
 		Code: 0,
 		Body: body,
 	}

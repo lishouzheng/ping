@@ -1,22 +1,30 @@
 package ping
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // pinger := Default(NoopLogger{})
 // pp := PingIPTask{}
+// pp.Reset()
 // pp.New("baidu.com", 5, NoopLogger{}, pinger)
 // pp.Start()
 // fmt.Println(pp.Rst())
 func Example1() {
 	// Output:
+	pinger2 := NewPingerIPV6(NoopLogger{})
 	pinger := Default(NoopLogger{})
-	pp := PingIPTask{}
 	pp2 := PingIPTask{}
-	pp.New("baidu.com", 5, NoopLogger{}, pinger)
-	pp2.New("baidu.com", 5, NoopLogger{}, pinger)
-	pp.Start()
+	pp2.Reset()
+	pp2.New("240e:928:1400:80::4", 5, NoopLogger{}, pinger2)
 	pp2.Start()
-	fmt.Println(pp.Rst())
+	fmt.Println(pp2.Rst())
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+	pp2.Reset()
+	pp2.New("baidu.com", 5, NoopLogger{}, pinger)
+	pp2.Start()
 	fmt.Println(pp2.Rst())
 }
 
