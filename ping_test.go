@@ -16,14 +16,14 @@ func Example1() {
 	pinger := Default(NoopLogger{})
 	pp2 := PingIPTask{}
 	pp2.Reset()
-	pp2.New("240e:928:1400:80::4", 5, NoopLogger{}, pinger2)
+	pp2.New("", 5, NoopLogger{}, pinger2)
 	pp2.Start()
 	fmt.Println(pp2.Rst())
 	fmt.Println()
 	fmt.Println()
 	fmt.Println()
 	pp2.Reset()
-	pp2.New("baidu.com", 5, NoopLogger{}, pinger)
+	pp2.New("", 5, NoopLogger{}, pinger)
 	pp2.Start()
 	fmt.Println(pp2.Rst())
 }
