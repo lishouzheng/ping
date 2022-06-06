@@ -12,16 +12,13 @@ import (
 // fmt.Println(pp.Rst())
 func Example1() {
 	// Output:
-	pinger2 := NewPingerIPV6(NoopLogger{})
-	pinger := Default(NoopLogger{})
+	pinger2 := NewPingerIPV4ByAddr(NoopLogger{}, "")
+	pinger := NewPinger(NoopLogger{})
 	pp2 := PingIPTask{}
 	pp2.Reset()
 	pp2.New("", 5, NoopLogger{}, pinger2)
 	pp2.Start()
 	fmt.Println(pp2.Rst())
-	fmt.Println()
-	fmt.Println()
-	fmt.Println()
 	pp2.Reset()
 	pp2.New("", 5, NoopLogger{}, pinger)
 	pp2.Start()
