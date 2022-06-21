@@ -505,6 +505,7 @@ func (p *pingeserver) listen() (packetConn, error) {
 		conn = &c
 	}
 	if err != nil {
+		p.logger.Errorf("Pinger listen Err[%v] IP[%v]", err, p.Source)
 		p.Stop()
 		return nil, err
 	}
