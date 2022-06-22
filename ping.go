@@ -116,6 +116,12 @@ func NewPingerIPV4ByAddr(logger Logger, addr string) Pinger {
 	return p
 }
 
+func NewPingerIPV6ByAddr(logger Logger, addr string) Pinger {
+	p := newIPV6ByAddr(logger, addr)
+	p.RecvRun()
+	return p
+}
+
 func Default(logger Logger) Pinger {
 	return NewPinger(logger)
 }
@@ -146,6 +152,34 @@ func newIPV4ByAddr(logger Logger, addr string) *pingeserver {
 
 		// ipaddr:            nil,
 		ipv4: true,
+		// network:           "ip",
+		protocol: "icmp",
+		TTL:      64,
+		logger:   logger,
+		Task:     make(map[uuid.UUID]pingIPCache, 0),
+		Source:   addr,
+	}
+}
+
+// New returns a new IPV6 Pinger struct pointer.
+func newIPV6ByAddr(logger Logger, addr string) *pingeserver {
+	// r := rand.New(rand.NewSource(getSeed()))
+	firstUUID := uuid.New()
+	var firstSequence = map[uuid.UUID]map[int]struct{}{}
+	firstSequence[firstUUID] = make(map[int]struct{})
+	return &pingeserver{
+		// Count:      -1,
+		// Interval: time.Second,
+		// RecordRtts: true,
+		Size: timeSliceLength + trackerLength,
+		// Timeout: time.Duration(math.MaxInt64),
+		// addr: addr,
+		done: make(chan interface{}),
+		// id:                r.Intn(math.MaxUint16),
+		// r := rand.New(rand.NewSource(getSeed()))
+
+		// ipaddr:            nil,
+		ipv4: false,
 		// network:           "ip",
 		protocol: "icmp",
 		TTL:      64,
