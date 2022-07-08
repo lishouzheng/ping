@@ -763,7 +763,11 @@ func (p *PingIPTask) Start() {
 					p.logger.Errorf("PingIPTask Err[%v]\n", r)
 				}
 				if handler := ErrorInf; handler != nil {
-					handler.F(fmt.Errorf("%v", r))
+					// 发送协程和接收协程在极限情况下会由于调度时停和内存重置原因导致空指针问题, 这种情况不作处理
+					if !strings.Contains(fmt.Sprint(r), "nil pointer dereference") {
+						handler.F(fmt.Errorf("%v", r))
+					}
+
 				}
 			}
 		}()
